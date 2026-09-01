@@ -2,9 +2,7 @@
 
 _Last reviewed: 2026-09-02._
 
-**Disclosure:** Elva is made by the maintainers of this repository. It is
-tagged (ours) below. Corrections to any other entry get priority review; see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+
 
 This page compares six HTTP/API clients: tools you use to compose requests, keep them in collections, script assertions, and run those collections again in CI. Facts below were checked against each vendor's own docs, pricing page, GitHub repository, or npm registry entry on the review date. Out of scope: load-testing tools, contract-testing frameworks (Schemathesis, Dredd), mock servers as standalone products, and API documentation hosts. Prices are list prices as published; discounts and regional pricing are not tracked.
 

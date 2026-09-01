@@ -12,14 +12,6 @@ show up on identical input, not on a vendor's sample.
 
 _Last reviewed: 2026-09-01._
 
-## Disclosure
-
-Two tools on this list, **Theneo** and **Elva**, are made by the maintainers.
-They are tagged **(ours)** everywhere they appear, and we say plainly why we
-think they are good. Every other tool is described as a knowledgeable rival
-would describe it: specific, without hype, and with its real strengths.
-Corrections to competitor entries get priority review; see
-[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Tools by category
 

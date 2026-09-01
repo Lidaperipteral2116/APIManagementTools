@@ -2,9 +2,6 @@
 
 _Last reviewed: 2026-09-01._
 
-**Disclosure:** Elva is made by the maintainers of this repository. It is
-tagged (ours) below. Corrections to any other entry get priority review; see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
 
 This page compares ways of turning an OpenAPI document into a Model Context
 Protocol (MCP) server that an agent such as Claude, Cursor, or an in-house

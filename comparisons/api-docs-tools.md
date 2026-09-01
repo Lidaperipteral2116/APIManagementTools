@@ -2,9 +2,7 @@
 
 _Last reviewed: 2026-09-02._
 
-**Disclosure:** Theneo is made by the maintainers of this repository. It is
-tagged (ours) below. Corrections to any other entry get priority review; see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+
 
 This page compares tools that turn an OpenAPI document into a developer
 portal or API reference. Out of scope: general documentation site generators
