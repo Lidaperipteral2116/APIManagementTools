@@ -1,0 +1,61 @@
+# Same "passing against Prism" configuration as `./run.sh ci`, expressed as a
+# Schemathesis 4.x config file. Not named `schemathesis.toml` on purpose: that
+# name is auto-discovered from the working directory and would silently apply
+# to the "everything on" run too. Use it explicitly:
+#
+#   schemathesis --config-file schemathesis.ci.toml run ../../../specs/demo-api.yaml
+#
+# Credentials come from environment variables (${VAR} expansion is built in).
+
+base-url = "http://127.0.0.1:4010"
+request-timeout = 10
+
+[headers]
+X-API-Key = "${PARCELIO_API_KEY}"
+Authorization = "Bearer ${PARCELIO_OAUTH_TOKEN}"
+
+[phases.coverage]
+enabled = false
+
+[phases.stateful]
+enabled = false
+
+[generation]
+mode = "positive"
+max-examples = 20
+deterministic = true
+
+[checks]
+# Only the checks that hold against an example-serving mock. See README.
+not_a_server_error.enabled = true
+status_code_conformance.enabled = true
+content_type_conformance.enabled = true
+response_headers_conformance.enabled = true
+response_schema_conformance.enabled = false
+negative_data_rejection.enabled = false
+positive_data_acceptance.enabled = false
+missing_required_header.enabled = false
+unsupported_method.enabled = true
+allow_header_conformance.enabled = false
+use_after_free.enabled = true
+ensure_resource_availability.enabled = true
+ignored_auth.enabled = false
+
+[[operations]]
+# Binary label download: Prism returns the literal string "string" as application/pdf.
+include-operation-id = "getShipmentLabel"
+enabled = false
+
+[[operations]]
+# multipart/form-data upload: Prism does not validate or mock file parts usefully.
+include-operation-id = "uploadShipmentDocument"
+enabled = false
+
+[[operations]]
+# Spec defect found by Schemathesis: PATCH /shipments/{id} documents no 4xx validation
+# response, so Prism's 422 for a body it rejects counts as undocumented. See README.
+include-operation-id = "updateShipment"
+enabled = false
+
+[reports.junit]
+enabled = true

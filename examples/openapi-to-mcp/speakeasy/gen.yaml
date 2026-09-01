@@ -1,0 +1,62 @@
+# .speakeasy/gen.yaml as written by `speakeasy quickstart -t mcp-typescript`
+# (speakeasy CLI 1.796.2, 2026-09-01). Nothing here is hand-invented; the only
+# edits are the two commented lines under `mcp-typescript`.
+configVersion: 2.0.0
+generation:
+  sdkClassName: ParcelioMcp
+  maintainOpenAPIOrder: true
+  usageSnippets:
+    optionalPropertyRendering: withExample
+    sdkInitStyle: constructor
+  useClassNamesForArrayFields: true
+  fixes:
+    nameResolutionDec2023: true
+    nameResolutionFeb2025: true
+    parameterOrderingFeb2024: true
+    requestResponseComponentNamesFeb2024: true
+    securityFeb2025: true
+    sharedErrorComponentsApr2025: true
+    sharedNestedComponentsJan2026: true
+    nameOverrideFeb2026: true
+  auth:
+    oAuth2ClientCredentialsEnabled: true
+    oAuth2PasswordEnabled: true
+    hoistGlobalSecurity: true
+  inferSSEOverload: true
+  sdkHooksConfigAccess: true
+  schemas:
+    allOfMergeStrategy: shallowMerge
+  requestBodyFieldName: body
+  versioningStrategy: automatic
+  persistentEdits: {}
+  tests:
+    generateTests: false
+    generateNewTests: true
+    skipResponseBodyAssertions: false
+mcp-typescript:
+  version: 0.0.1
+  additionalDependencies:
+    dependencies: {}
+    devDependencies: {}
+    peerDependencies: {}
+  advancedFlags: []
+  author: Speakeasy
+  cloudflareEnabled: false
+  envVarPrefix: PARCELIOMCP
+  fixEnumNameSanitization: false
+  formStringArrayEncodeMode: array
+  gramEnabled: false
+  inferUnionDiscriminators: true
+  inputModelSuffix: input
+  maxMethodParams: 0
+  multipartArrayFormat: standard
+  outputModelSuffix: output
+  packageName: parcelio-mcp
+  responseFormat: flat
+  # Set to true to validate API responses against the generated Zod schemas
+  # before returning them as tool results (docs: mcp-server-config reference).
+  validateResponse: false
+  # Optional: customise the MCPB (Claude Desktop bundle) manifest.
+  # mcpbManifestOverlay:
+  #   displayName: Parcelio Shipments
+  #   description: Create shipments, quote rates and track packages.

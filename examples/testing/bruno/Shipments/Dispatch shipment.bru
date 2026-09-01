@@ -1,0 +1,37 @@
+meta {
+  name: Dispatch shipment
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/shipments/{{shipmentId}}/dispatch
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{oauthToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains application/json
+  res.body.id: eq {{shipmentId}}
+  res.body.status: isString
+}
+
+tests {
+  test("dispatch returns a full Shipment", function () {
+    const body = res.getBody();
+    expect(body.packages).to.be.an("array");
+    expect(body).to.have.property("tracking_number");
+  });
+}
+
+docs {
+  `dispatchShipment` (one of the deliberately undocumented operations in
+  the spec). Prism returns the static `Shipment` example, so `status`
+  stays `draft`; a real server would return `dispatched`. The assertion
+  therefore only checks the type.
+}

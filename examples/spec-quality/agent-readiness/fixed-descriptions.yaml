@@ -1,0 +1,106 @@
+# OpenAPI Overlay 1.0.0 (https://spec.openapis.org/overlay/v1.0.0)
+#
+# Adds descriptions to the ten operations in specs/demo-api.yaml that have a
+# missing or one-line description, and a summary to the one operation that
+# has none. Nothing else is touched: the snake_case operationId
+# `tracking_event_ingest` and the missing request-body examples stay, so the
+# "after" lint run still has something to say.
+#
+# Apply (from the repo root):
+#   npx -y bump-cli@2.10.1 overlay specs/demo-api.yaml examples/spec-quality/agent-readiness/fixed-descriptions.yaml -o examples/spec-quality/agent-readiness/demo-api.fixed.yaml
+overlay: 1.0.0
+info:
+  title: Parcelio demo spec, operation descriptions
+  version: 1.0.0
+actions:
+  - target: $.paths['/shipments/{shipmentId}'].patch
+    description: updateShipment had "Update shipment."
+    update:
+      description: |
+        Updates the mutable fields of a `draft` shipment: reference, service
+        code, recipient address, label format, and metadata. Returns the
+        updated shipment. Dispatched shipments cannot be changed and return
+        `409`; cancel and recreate instead.
+
+  - target: $.paths['/shipments/{shipmentId}/dispatch'].post
+    description: dispatchShipment had no description.
+    update:
+      description: |
+        Sends a `draft` shipment to the carrier and purchases its label.
+        Returns the shipment with `status: dispatched`, a `tracking_number`
+        on every package, and the `cost` charged. Returns `409` if the
+        shipment is not in `draft` and `402` if the account balance cannot
+        cover the label. International shipments need a `commercial_invoice`
+        document first (see `uploadShipmentDocument`).
+
+  - target: $.paths['/shipments/{shipmentId}/packages'].get
+    description: listPackages had neither summary nor description.
+    update:
+      summary: List packages
+      description: |
+        Returns the packages that belong to a shipment, in the order they
+        were added. Results are paginated with a cursor; follow `next_cursor`
+        until it is `null`. Use `getPackage` for a single package by id.
+
+  - target: $.paths['/packages/{packageId}'].get
+    description: getPackage had "Get package."
+    update:
+      description: |
+        Returns a single package by id, including its weight, dimensions,
+        declared value, and the carrier tracking number once the parent
+        shipment has been dispatched.
+
+  - target: $.paths['/packages/{packageId}'].delete
+    description: removePackage had no description.
+    update:
+      description: |
+        Removes a package from a `draft` shipment. Returns `204` with no
+        body. Once the shipment is dispatched its packages are frozen and
+        this returns `409`. A shipment must keep at least one package; use
+        `cancelShipment` to discard the whole shipment.
+
+  - target: $.paths['/tracking/events'].post
+    description: tracking_event_ingest had no description. The operationId is left alone on purpose.
+    update:
+      description: |
+        Records a carrier scan event for a tracking number. Intended for
+        carrier integrations, not shipping customers; requires the
+        `tracking:write` scope. Returns `202` and processes the event
+        asynchronously. Once processed it appears in `listTrackingEvents`
+        and triggers webhook deliveries.
+
+  - target: $.paths['/carriers/{carrierId}'].get
+    description: getCarrier had "Returns a carrier."
+    update:
+      description: |
+        Returns one carrier by id, including whether this account has
+        connected credentials (`enabled`), the countries it can ship from,
+        and a template for the carrier's own tracking page. Use
+        `listCarrierServices` for its service levels and codes.
+
+  - target: $.paths['/pickups/{pickupId}'].delete
+    description: cancelPickup had no description.
+    update:
+      description: |
+        Cancels a scheduled pickup with the carrier. Returns `204` with no
+        body. Pickups that are already `completed` cannot be cancelled and
+        return `409`. The shipments included in the pickup are not affected.
+
+  - target: $.paths['/webhooks/{webhookId}'].get
+    description: getWebhookSubscription had "Get a webhook."
+    update:
+      description: |
+        Returns a webhook subscription by id, including its endpoint URL,
+        subscribed events, and delivery health over the last 24 hours. The
+        signing `secret` is not included; it is only returned once, by
+        `createWebhookSubscription`.
+
+  - target: $.paths['/webhooks/{webhookId}/test'].post
+    description: testWebhookSubscription had no description.
+    update:
+      description: |
+        Sends a synthetic `shipment.status_changed` event to the
+        subscription's endpoint and returns the delivery result: whether it
+        was delivered, the HTTP status your endpoint returned, and how long
+        it took. Use it after creating a subscription to confirm signature
+        verification works before real events arrive.

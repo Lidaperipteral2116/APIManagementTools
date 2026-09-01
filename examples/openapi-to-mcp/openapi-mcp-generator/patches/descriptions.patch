@@ -1,0 +1,92 @@
+--- a/generated/src/index.ts
++++ b/generated/src/index.ts
+@@ -139,7 +139,7 @@
+   }],
+   ["updateShipment", {
+     name: "updateShipment",
+-    description: `Update shipment.
++    description: `Changes the mutable fields of a draft shipment: reference, service_code, ship_to address, label_format and metadata. Sender address and packages cannot be changed here (use addPackage / removePackage). Returns 409 once the shipment is dispatched. Requires OAuth2 scope shipments:write.
+ (Tags: Shipments)`,
+     inputSchema: {"type":"object","properties":{"shipmentId":{"type":"string","pattern":"^shp_[A-Za-z0-9]{8,}$","examples":["shp_9f3KqLm2Xa"],"description":"Shipment identifier."},"requestBody":{"type":"object","description":"Fields that may change while a shipment is still in `draft`.","properties":{"reference":{"type":"string","maxLength":64},"service_code":{"type":"string"},"ship_to":{"type":"object","required":["name","line1","city","postal_code","country"],"properties":{"name":{"type":"string","maxLength":100,"description":"Person or company name.","examples":["Dana Whitfield"]},"company":{"type":"string","maxLength":100},"line1":{"type":"string","maxLength":120,"examples":["48 Maple St"]},"line2":{"type":"string","maxLength":120},"city":{"type":"string","maxLength":80,"examples":["Portland"]},"region":{"type":"string","maxLength":80,"description":"State, province, or region code where applicable.","examples":["OR"]},"postal_code":{"type":"string","maxLength":20,"examples":["97209"]},"country":{"type":"string","minLength":2,"maxLength":2,"description":"ISO 3166-1 alpha-2 country code.","examples":["US"]},"phone":{"type":"string","maxLength":30,"description":"E.164 phone number. Required by most carriers for international shipments.","examples":["+15035550188"]},"email":{"type":"string","format":"email"},"residential":{"type":"boolean","description":"Whether this is a residential delivery point. Affects surcharges."}}},"label_format":{"type":"string","enum":["pdf","png"]},"metadata":{"type":"object","maxProperties":20,"additionalProperties":{"type":"string","maxLength":500}}}}},"required":["shipmentId","requestBody"]},
+     method: "patch",
+@@ -152,7 +152,7 @@
+   }],
+   ["dispatchShipment", {
+     name: "dispatchShipment",
+-    description: `Dispatch shipment
++    description: `Purchases the label and hands a draft shipment to the carrier. The shipment moves from \`draft\` to \`dispatched\`, gets a tracking number, and its packages become frozen. Returns 409 if the shipment is not a draft, and 402 if the account balance cannot cover the label. International shipments need a \`commercial_invoice\` document first. Requires OAuth2 scope shipments:write.
+ (Tags: Shipments)`,
+     inputSchema: {"type":"object","properties":{"shipmentId":{"type":"string","pattern":"^shp_[A-Za-z0-9]{8,}$","examples":["shp_9f3KqLm2Xa"],"description":"Shipment identifier."}},"required":["shipmentId"]},
+     method: "post",
+@@ -215,7 +215,7 @@
+   }],
+   ["listPackages", {
+     name: "listPackages",
+-    description: `Executes GET /shipments/{shipmentId}/packages
++    description: `Lists the packages that belong to one shipment, oldest first, with cursor pagination. Each package carries weight, dimensions and, after dispatch, its own tracking number.
+ (Tags: Packages)`,
+     inputSchema: {"type":"object","properties":{"shipmentId":{"type":"string","pattern":"^shp_[A-Za-z0-9]{8,}$","examples":["shp_9f3KqLm2Xa"],"description":"Shipment identifier."},"limit":{"type":"number","minimum":1,"maximum":100,"default":20,"description":"Maximum number of items to return per page."},"cursor":{"type":"string","maxLength":512,"description":"Opaque cursor from a previous response's `next_cursor`. Omit for the first page."}},"required":["shipmentId"]},
+     method: "get",
+@@ -245,7 +245,7 @@
+   }],
+   ["getPackage", {
+     name: "getPackage",
+-    description: `Get package.
++    description: `Returns one package by id: weight, dimensions, declared value, contents, the shipment it belongs to, and its tracking number if the shipment has been dispatched.
+ (Tags: Packages)`,
+     inputSchema: {"type":"object","properties":{"packageId":{"type":"string","pattern":"^pkg_[A-Za-z0-9]{8,}$","examples":["pkg_4Rt8sWq1Zn"],"description":"Package identifier."}},"required":["packageId"]},
+     method: "get",
+@@ -258,7 +258,7 @@
+   }],
+   ["removePackage", {
+     name: "removePackage",
+-    description: `Remove package
++    description: `Removes a package from a draft shipment. Returns 409 once the shipment has been dispatched, because carrier pricing is locked to the package set at dispatch time. Requires OAuth2 scope shipments:write.
+ (Tags: Packages)`,
+     inputSchema: {"type":"object","properties":{"packageId":{"type":"string","pattern":"^pkg_[A-Za-z0-9]{8,}$","examples":["pkg_4Rt8sWq1Zn"],"description":"Package identifier."}},"required":["packageId"]},
+     method: "delete",
+@@ -306,7 +306,7 @@
+   }],
+   ["tracking_event_ingest", {
+     name: "tracking_event_ingest",
+-    description: `Ingest tracking event
++    description: `Carrier integrations only: pushes a scan event for a tracking number into Parcelio. Shipper accounts do not have the tracking:write scope and will get 401. Do not call this on behalf of a shipper.
+ (Tags: Tracking)`,
+     inputSchema: {"type":"object","properties":{"requestBody":{"type":"object","required":["tracking_number","carrier_id","type","occurred_at"],"properties":{"tracking_number":{"type":"string"},"carrier_id":{"type":"string"},"type":{"type":"string","enum":["label_created","picked_up","arrived_at_facility","departed_facility","out_for_delivery","delivered","delivery_attempted","exception","returned"]},"description":{"type":"string"},"location":{"type":"object","properties":{"city":{"type":"string"},"region":{"type":"string"},"country":{"type":"string"}}},"occurred_at":{"type":"string","format":"date-time"}},"description":"The JSON request body."}},"required":["requestBody"]},
+     method: "post",
+@@ -336,7 +336,7 @@
+   }],
+   ["getCarrier", {
+     name: "getCarrier",
+-    description: `Returns a carrier.
++    description: `Returns one carrier by id (for example \`car_ups\`): display name, whether this account has connected credentials, the countries it ships from, and a tracking URL template.
+ (Tags: Carriers)`,
+     inputSchema: {"type":"object","properties":{"carrierId":{"type":"string","pattern":"^car_[a-z0-9_]{2,}$","examples":["car_ups"],"description":"Carrier identifier, for example `car_ups`."}},"required":["carrierId"]},
+     method: "get",
+@@ -432,7 +432,7 @@
+   }],
+   ["cancelPickup", {
+     name: "cancelPickup",
+-    description: `Cancel pickup
++    description: `Cancels a scheduled carrier pickup. Only pickups in \`requested\` or \`confirmed\` status can be cancelled; completed pickups return 409. Requires OAuth2 scope shipments:write.
+ (Tags: Pickups)`,
+     inputSchema: {"type":"object","properties":{"pickupId":{"type":"string","pattern":"^pk_[A-Za-z0-9]{8,}$","examples":["pk_7Hq2mZp9Lc"],"description":"Pickup identifier."}},"required":["pickupId"]},
+     method: "delete",
+@@ -479,7 +479,7 @@
+   }],
+   ["getWebhookSubscription", {
+     name: "getWebhookSubscription",
+-    description: `Get a webhook.
++    description: `Returns one webhook subscription: target URL, subscribed event types, active flag, and 24-hour delivery health. The signing secret is never returned here.
+ (Tags: Webhooks)`,
+     inputSchema: {"type":"object","properties":{"webhookId":{"type":"string","pattern":"^whk_[A-Za-z0-9]{8,}$","examples":["whk_Bd72kPz4Qm"],"description":"Webhook subscription identifier."}},"required":["webhookId"]},
+     method: "get",
+@@ -508,7 +508,7 @@
+   }],
+   ["testWebhookSubscription", {
+     name: "testWebhookSubscription",
+-    description: `Send test event
++    description: `Sends a synthetic \`shipment.status_changed\` event to the subscription's URL and reports whether the endpoint answered, its HTTP status, and how long it took. Use it to verify signature handling before relying on real deliveries. Requires OAuth2 scope webhooks:manage.
+ (Tags: Webhooks)`,
+     inputSchema: {"type":"object","properties":{"webhookId":{"type":"string","pattern":"^whk_[A-Za-z0-9]{8,}$","examples":["whk_Bd72kPz4Qm"],"description":"Webhook subscription identifier."}},"required":["webhookId"]},
+     method: "post",

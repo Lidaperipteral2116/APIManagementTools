@@ -1,0 +1,33 @@
+meta {
+  name: Get shipment
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/shipments/{{shipmentId}}
+  body: none
+  auth: inherit
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains application/json
+  res.body.id: eq {{shipmentId}}
+  res.body.ship_to.country: length 2
+  res.body.packages: isArray
+}
+
+tests {
+  test("shipment has the required fields", function () {
+    expect(res.getBody()).to.include.all.keys(
+      "id", "status", "ship_from", "ship_to", "packages", "carrier_id", "service_code", "created_at", "updated_at"
+    );
+  });
+}
+
+docs {
+  `getShipment`. `{{shipmentId}}` comes from `Create shipment` when the
+  folder runs in order, otherwise from the environment default
+  `shp_9f3KqLm2Xa` (the spec example).
+}

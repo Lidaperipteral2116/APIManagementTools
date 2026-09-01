@@ -1,0 +1,64 @@
+meta {
+  name: Quote rates
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/rates
+  body: json
+  auth: inherit
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "ship_from": {
+      "name": "Parcelio Warehouse 3",
+      "line1": "1200 Industrial Way",
+      "city": "Reno",
+      "region": "NV",
+      "postal_code": "89502",
+      "country": "US"
+    },
+    "ship_to": {
+      "name": "Dana Whitfield",
+      "line1": "48 Maple St",
+      "city": "Portland",
+      "region": "OR",
+      "postal_code": "97209",
+      "country": "US"
+    },
+    "packages": [
+      {
+        "weight": { "value": 2.4, "unit": "kg" },
+        "dimensions": { "length": 30, "width": 20, "height": 15, "unit": "cm" }
+      }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains application/json
+  res.body.data: isArray
+  res.body.data[0].total.amount: matches ^-?\d+(\.\d{1,4})?$
+  res.body.data[0].total.currency: length 3
+}
+
+tests {
+  test("every rate carries a service_code, a total and transit_days", function () {
+    res.getBody().data.forEach((rate) => {
+      expect(rate).to.include.all.keys("service_code", "carrier_id", "service_name", "total", "transit_days");
+    });
+  });
+}
+
+docs {
+  `quoteRates`. Read operation, so it uses the collection API key even
+  though it is a POST. The spec has no request example for `RateRequest`,
+  so this body was written by hand.
+}

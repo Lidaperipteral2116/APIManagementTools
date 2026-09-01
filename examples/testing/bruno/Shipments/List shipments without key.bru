@@ -1,0 +1,32 @@
+meta {
+  name: List shipments without key
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/shipments
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 401
+  res.headers['content-type']: contains application/problem+json
+  res.body.type: isString
+  res.body.title: isString
+}
+
+tests {
+  test("401 body is an RFC 9457 problem document", function () {
+    expect(res.getBody()).to.include.all.keys("type", "title", "status");
+  });
+}
+
+docs {
+  Negative test: `auth: none` drops the collection API key, Prism's
+  security check answers 401 with the spec's `Unauthorized` problem
+  example. Note that the example `status` field inside the body is 404
+  (the schema's example value), not 401; that is a spec example quirk
+  reproduced by the mock, so the test checks the HTTP status only.
+}

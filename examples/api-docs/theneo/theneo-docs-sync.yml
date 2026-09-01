@@ -1,0 +1,26 @@
+# Copy to .github/workflows/theneo-docs-sync.yml
+# Re-imports specs/demo-api.yaml into the Theneo project on every push that
+# touches the spec, then publishes. Action name and inputs taken from
+# https://github.com/marketplace/actions/theneo-api-documentation (fetched 2026-09-01).
+name: Theneo docs sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'specs/demo-api.yaml'
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import spec into Theneo and publish
+        uses: Theneo-Inc/api-documentation@1.8.0
+        with:
+          FILE_PATH: specs/demo-api.yaml
+          PROJECT_SLUG: parcelio-demo          # from the project URL in app.theneo.io
+          SECRET: ${{ secrets.THENEO_SECRET }}  # the same value as THENEO_API_KEY
+          IMPORT_OPTION: overwrite             # overwrite | merge | endpoints | append
+          AUTO_PUBLISH: true

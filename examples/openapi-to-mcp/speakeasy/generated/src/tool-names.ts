@@ -1,0 +1,115 @@
+// Auto-generated at build time
+export const toolNames: Array<{ name: string; description: string }>= [
+  {
+    "name": "shipments-list-shipments",
+    "description": "List shipments\n\nReturns shipments belonging to the authenticated account, newest\nfirst. Filter by `status` to find shipments in a given lifecycle\nstage, or by `carrier_id` to see everything moving with one carrier.\nResults are paginated with a cursor; follow `next_cursor` until it is\n`null`.\n"
+  },
+  {
+    "name": "shipments-create-shipment",
+    "description": "Create a shipment\n\nCreates a shipment in `draft` status from a sender address, a\nrecipient address, one or more packages, and a carrier service.\nNo label is purchased and nothing is sent to the carrier until you\ncall `dispatchShipment`. Use `quoteRates` first if you need a price\nbefore committing to a service.\n\nSend an `Idempotency-Key` header to make retries safe.\n"
+  },
+  {
+    "name": "shipments-get-shipment",
+    "description": "Get a shipment\n\nReturns the full shipment record including its packages, the\ncurrently assigned carrier service, cost, and the latest tracking\nstatus. Use `listTrackingEvents` for the complete scan history.\n"
+  },
+  {
+    "name": "update_shipment",
+    "description": "Change reference, service_code, ship_to, label_format or metadata on a shipment that is still in draft. Only the fields sent are changed. Returns 409 once the shipment has been dispatched."
+  },
+  {
+    "name": "shipments-cancel-shipment",
+    "description": "Cancel a shipment\n\nCancels a shipment. Draft shipments are deleted outright. Dispatched\nshipments are voided with the carrier, which may take up to a few\nminutes; the shipment moves to `cancelled` once the carrier confirms.\nShipments that are already `in_transit` or `delivered` cannot be\ncancelled and return `409`.\n"
+  },
+  {
+    "name": "dispatch_shipment",
+    "description": "Purchase the carrier label and hand a draft shipment to the carrier. Irreversible and charges the account balance; confirm with the user before calling. Returns the shipment with tracking_number set. Fails with 409 if the shipment is not in draft, 402 if the balance is insufficient."
+  },
+  {
+    "name": "shipments-get-shipment-label",
+    "description": "Download the shipping label\n\nReturns the carrier label for a dispatched shipment. Choose the\nformat with the `Accept` header: `application/pdf` for a printable\npage, or `image/png` for a 4x6 inch thermal-printer image. Draft\nshipments have no label and return `409`.\n"
+  },
+  {
+    "name": "shipments-list-shipment-documents",
+    "description": "List shipment documents\n\nReturns customs forms, commercial invoices, and any documents you\nuploaded with `uploadShipmentDocument`. Carrier-generated documents\nappear here automatically after dispatch.\n"
+  },
+  {
+    "name": "shipments-upload-shipment-document",
+    "description": "Upload a shipment document\n\nAttaches a document such as a commercial invoice or a dangerous-goods\ndeclaration to a shipment. Accepted types are PDF, PNG, and JPEG up\nto 10 MB. International shipments must have a `commercial_invoice`\ndocument before `dispatchShipment` will succeed.\n"
+  },
+  {
+    "name": "list_packages",
+    "description": "List the packages that belong to one shipment, with weight, dimensions and (after dispatch) each package's tracking number. Cursor-paginated: pass next_cursor back as cursor until it is null."
+  },
+  {
+    "name": "packages-add-package",
+    "description": "Add a package to a shipment\n\nAdds a package to a `draft` shipment. Weight and dimensions are\nrequired because carriers price on dimensional weight. Once a\nshipment is dispatched its packages are frozen and this returns\n`409`.\n"
+  },
+  {
+    "name": "get_package",
+    "description": "Fetch one package by id (pkg_...): weight, dimensions, declared value, contents and the tracking number assigned at dispatch."
+  },
+  {
+    "name": "remove_package",
+    "description": "Remove a package from a draft shipment. Not allowed once the shipment is dispatched (409). Deleting the last package leaves an empty shipment that cannot be dispatched."
+  },
+  {
+    "name": "tracking-get-tracking-by-number",
+    "description": "Track by tracking number\n\nLooks up current status and the most recent scan events for a\ncarrier tracking number. Works for shipments created through\nParcelio and, for supported carriers, for any tracking number the\ncarrier recognises. This endpoint is rate-limited more strictly than\nthe rest of the API (see `429`).\n"
+  },
+  {
+    "name": "tracking-list-tracking-events",
+    "description": "List tracking events\n\nReturns every scan event the carrier has reported for the shipment,\noldest first, so the list reads as a timeline. Events are appended\nas they arrive; subscribe to the `shipment.status_changed` webhook\ninstead of polling if you need them in real time.\n"
+  },
+  {
+    "name": "carriers-list-carriers",
+    "description": "List carriers\n\nReturns the carriers available to your account. Carriers you have\nconnected credentials for are marked `enabled: true`; the rest are\nlisted so you can see what is supported. Use `listCarrierServices`\nto get the service codes needed by `createShipment`.\n"
+  },
+  {
+    "name": "get_carrier",
+    "description": "Fetch one carrier by id (car_ups, car_fedex, ...): whether the account has credentials for it, the countries it ships from and its public tracking URL template."
+  },
+  {
+    "name": "carriers-list-carrier-services",
+    "description": "List carrier services\n\nReturns the service levels a carrier offers (for example ground,\ntwo-day, overnight) with their `service_code`, transit-time\nestimate, and package limits. The `service_code` is what you pass\nto `createShipment` and `quoteRates`.\n"
+  },
+  {
+    "name": "rates-quote-rates",
+    "description": "Quote rates\n\nReturns a price and transit estimate for every enabled carrier\nservice that can move the given packages between the two addresses.\nQuotes are valid for 15 minutes. Nothing is created; this call is\nsafe to make repeatedly while a user compares options.\n"
+  },
+  {
+    "name": "addresses-validate-address",
+    "description": "Validate an address\n\nChecks an address against carrier and postal databases and returns\na normalised version with any corrections applied. Use the\n`residential` flag in the response to pick the right service level;\nseveral carriers surcharge residential deliveries.\n"
+  },
+  {
+    "name": "pickups-schedule-pickup",
+    "description": "Schedule a pickup\n\nAsks a carrier to collect one or more dispatched shipments from an\naddress within a time window. All shipments in one pickup must use\nthe same carrier. Carriers typically need at least two hours' notice\nand return `422` for windows they cannot honour.\n"
+  },
+  {
+    "name": "pickups-get-pickup",
+    "description": "Get a pickup\n\nReturns a scheduled pickup, including the carrier confirmation\nnumber once the carrier has acknowledged it.\n"
+  },
+  {
+    "name": "cancel_pickup",
+    "description": "Cancel a scheduled carrier pickup. Returns 409 if the driver has already completed it. Does not cancel the shipments in the pickup."
+  },
+  {
+    "name": "webhooks-list-webhook-subscriptions",
+    "description": "List webhook subscriptions\n\nReturns the webhook subscriptions configured for your account,\nincluding each subscription's delivery health over the last 24\nhours.\n"
+  },
+  {
+    "name": "webhooks-create-webhook-subscription",
+    "description": "Create a webhook subscription\n\nRegisters an HTTPS endpoint to receive shipment events. The\nresponse includes a `secret` exactly once; use it to verify the\n`Parcelio-Signature` header on incoming deliveries. Deliveries are\nretried with exponential backoff for up to 24 hours on non-2xx\nresponses.\n"
+  },
+  {
+    "name": "get_webhook_subscription",
+    "description": "Fetch one webhook subscription: target URL, subscribed event types, active flag and 24-hour delivery health. The signing secret is never returned here."
+  },
+  {
+    "name": "webhooks-delete-webhook-subscription",
+    "description": "Delete a webhook subscription\n\nStops deliveries to the endpoint immediately. In-flight retries are\nabandoned. This cannot be undone; create a new subscription to\nresume.\n"
+  },
+  {
+    "name": "test_webhook_subscription",
+    "description": "Send a synthetic shipment.status_changed event to a webhook subscription's URL and report whether the endpoint answered 2xx, the status code and the round-trip time. Safe to repeat."
+  }
+];

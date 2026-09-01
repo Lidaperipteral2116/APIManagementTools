@@ -1,0 +1,146 @@
+# Agent-readiness ruleset: the checkable subset of CHECKLIST.md.
+#
+# Extends nothing on purpose. These rules are about whether an LLM agent can
+# pick and call the right tool, not about OpenAPI validity; run spectral:oas
+# (or ../spectral/.spectral.yaml) separately for that.
+#
+# Run from the repo root:
+#   npx -y @stoplight/spectral-cli@6.16.3 lint -r examples/spec-quality/agent-readiness/agent-readiness.spectral.yaml specs/demo-api.yaml
+rules:
+  agent-operation-description:
+    description: An agent chooses a tool by its description. Require one of at least 40 characters.
+    message: "{{property}} {{error}}"
+    severity: warn
+    given: "$.paths[*][get,put,post,delete,options,head,patch,trace]"
+    then:
+      - field: description
+        function: truthy
+      - field: description
+        function: length
+        functionOptions:
+          min: 40
+
+  agent-description-states-outcome:
+    description: The description should say what the operation does or returns, as a third-person verb phrase ("Returns ...", "Creates ..."). Imperative stubs like "Get package." only repeat the operationId. Heuristic; extend the verb list for your domain.
+    message: "Description should state what the operation does or returns (\"Returns ...\", \"Creates ...\", \"Cancels ...\")."
+    severity: warn
+    given: "$.paths[*][get,put,post,delete,options,head,patch,trace].description"
+    then:
+      function: pattern
+      functionOptions:
+        match: "\\b(Returns|Lists|Creates|Adds|Updates|Replaces|Removes|Deletes|Cancels|Dispatches|Sends|Uploads|Attaches|Schedules|Validates|Checks|Looks up|Registers|Stops|Starts|Asks|Records|Ingests|Fetches|Retrieves|Searches|Marks|Triggers|Generates|Downloads|Quotes)\\b"
+
+  agent-parameter-description:
+    description: Every parameter needs a description; the agent has to fill it in from that text alone.
+    severity: warn
+    given:
+      - "$.paths[*][get,put,post,delete,options,head,patch,trace].parameters[*]"
+      - "$.paths[*].parameters[*]"
+    then:
+      field: description
+      function: truthy
+
+  agent-security-scheme-description:
+    description: Security schemes need a description saying how to obtain the credential; the MCP server operator reads it, the agent never sees it.
+    severity: warn
+    given: "$.components.securitySchemes[*]"
+    then:
+      field: description
+      function: truthy
+
+  agent-operationid-camel-case:
+    description: operationIds become tool names. Keep them lowerCamelCase so generated names are consistent (listShipments, not list_shipments).
+    severity: warn
+    given: "$.paths[*][get,put,post,delete,options,head,patch,trace].operationId"
+    then:
+      function: casing
+      functionOptions:
+        type: camel
+
+  agent-tag-description:
+    description: Tags group tools; a described tag lets an agent (or a generator's route filter) narrow the tool surface.
+    severity: warn
+    given: "$.tags[*]"
+    then:
+      field: description
+      function: truthy
+
+  agent-request-body-example:
+    description: POST/PUT/PATCH bodies need an example (media-type `example`/`examples`, or `example`/`examples` on the schema) so the agent has a concrete shape to imitate.
+    message: "Request body {{property}} has no example or examples (media type or schema level)."
+    severity: warn
+    given: "$.paths[*][post,put,patch].requestBody.content[*]"
+    then:
+      function: schema
+      functionOptions:
+        # See agent-list-returns-next-cursor for why the condition is wrapped in not/not.
+        schema:
+          not:
+            not:
+              anyOf:
+                - required: [example]
+                - required: [examples]
+                - required: [schema]
+                  properties:
+                    schema:
+                      anyOf:
+                        - required: [example]
+                        - required: [examples]
+
+  agent-list-returns-next-cursor:
+    description: A `cursor` query parameter marks a list operation; its 200 response must carry `next_cursor` so the agent can follow pages.
+    message: "List operation response schema has no next_cursor property."
+    severity: warn
+    # Positional check: Spectral's JSONPath filters have no arrow functions or
+    # nested paths. Extend if `cursor` is declared later than fourth.
+    given: "$.paths[*][?(@property === 'get' && @.parameters && ((@.parameters[0] && @.parameters[0].name === 'cursor') || (@.parameters[1] && @.parameters[1].name === 'cursor') || (@.parameters[2] && @.parameters[2].name === 'cursor') || (@.parameters[3] && @.parameters[3].name === 'cursor')))].responses['200'].content['application/json'].schema"
+    then:
+      function: schema
+      functionOptions:
+        # Double `not`: ajv reports anyOf failures once per branch at nested
+        # paths, which Spectral turns into several findings. Wrapping the
+        # condition in not/not makes ajv report a single root-level failure.
+        schema:
+          not:
+            not:
+              anyOf:
+                - required: [properties]
+                  properties:
+                    properties:
+                      required: [next_cursor]
+                - required: [allOf]
+                  properties:
+                    allOf:
+                      type: array
+                      contains:
+                        required: [properties]
+                        properties:
+                          properties:
+                            required: [next_cursor]
+
+  agent-binary-response:
+    description: Binary responses (PDF, images, octet-stream) do not fit in a tool result. Exclude the operation from the tool surface or expose it as an MCP resource / signed URL.
+    message: "Binary response media type {{property}}; exclude this operation from the tool surface or expose it as a resource."
+    severity: info
+    given: "$.paths[*][get,put,post,delete,options,head,patch,trace].responses[*].content[?(@property.match(/^(application\\/pdf|application\\/octet-stream|application\\/zip|image\\/|audio\\/|video\\/)/))]"
+    then:
+      function: falsy
+
+  agent-create-idempotency-key:
+    description: A POST that creates a resource (201) should accept an Idempotency-Key header so an agent can retry a timed-out call without creating duplicates.
+    message: "POST returning 201 has no Idempotency-Key parameter; retries by an agent may create duplicates."
+    severity: hint
+    given: "$.paths[*][?(@property === 'post' && @.responses && @.responses['201'])]"
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          required: [parameters]
+          properties:
+            parameters:
+              type: array
+              contains:
+                required: [name]
+                properties:
+                  name:
+                    const: Idempotency-Key

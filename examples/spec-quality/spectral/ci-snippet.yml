@@ -1,0 +1,37 @@
+# Drop into .github/workflows/spec-lint.yml (or merge the job into an existing workflow).
+# Lints specs/demo-api.yaml with the Parcelio ruleset. Warnings fail the job
+# (--fail-severity warn) and show up as inline annotations on the PR
+# (-f github-actions). Runs on ubuntu-latest with Node 22; no Prism mock needed.
+name: spec-lint
+
+on:
+  pull_request:
+    paths:
+      - 'specs/**'
+      - 'examples/spec-quality/spectral/**'
+  push:
+    branches: [main]
+
+jobs:
+  spectral:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Lint OpenAPI with Spectral
+        run: >
+          npx -y @stoplight/spectral-cli@6.16.3 lint
+          -r examples/spec-quality/spectral/.spectral.yaml
+          --fail-severity warn
+          -f github-actions
+          specs/demo-api.yaml
+      # Optional: also prove the convention rules fire, using the fixture.
+      # It is expected to fail, so invert the exit code.
+      - name: Ruleset self-test (fixture must produce warnings)
+        run: >
+          ! npx -y @stoplight/spectral-cli@6.16.3 lint
+          -r examples/spec-quality/spectral/.spectral.yaml
+          --fail-severity warn
+          examples/spec-quality/spectral/fixtures/violations.yaml

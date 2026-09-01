@@ -1,0 +1,39 @@
+# Minimal spec that violates the two convention rules the demo spec passes
+# (cursor pagination and problem+json errors). Used to prove those rules fire.
+openapi: 3.1.0
+info:
+  title: Violations fixture
+  version: 0.0.1
+  description: Deliberately wrong. Used only to exercise the ruleset.
+paths:
+  /things:
+    get:
+      operationId: listThings
+      summary: List things
+      description: Returns things, paginated with a cursor, but the response schema forgets next_cursor.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: A page of things.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { type: object }
+        '404':
+          description: Not found, but as plain JSON instead of problem+json.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }

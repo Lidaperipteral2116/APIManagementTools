@@ -1,0 +1,47 @@
+meta {
+  name: Validate address
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/addresses/validate
+  body: json
+  auth: inherit
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "name": "Dana Whitfield",
+    "line1": "48 Maple St",
+    "city": "Portland",
+    "region": "OR",
+    "postal_code": "97208",
+    "country": "US"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains application/json
+  res.body.valid: isBoolean
+  res.body.normalized.country: length 2
+  res.body.corrections: isArray
+}
+
+tests {
+  test("normalized address keeps the required Address fields", function () {
+    const n = res.getBody().normalized;
+    expect(n).to.include.all.keys("name", "line1", "city", "postal_code", "country");
+  });
+}
+
+docs {
+  `validateAddress`. Prism answers with the schema example, so the
+  `corrections` array always shows the 97208 -> 97209 example fix
+  regardless of the input.
+}

@@ -1,0 +1,8 @@
+.venv/
+.hypothesis/
+.pytest_cache/
+__pycache__/
+schemathesis-report/
+junit.xml
+.env
+.schemathesis/

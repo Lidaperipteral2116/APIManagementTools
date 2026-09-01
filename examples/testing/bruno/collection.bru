@@ -1,0 +1,40 @@
+meta {
+  name: Parcelio Shipments API
+}
+
+auth {
+  mode: apikey
+}
+
+auth:apikey {
+  key: X-API-Key
+  value: {{apiKey}}
+  placement: header
+}
+
+docs {
+  # Parcelio Shipments API (Bruno collection)
+
+  Hand-written collection for the shared demo spec `specs/demo-api.yaml`
+  (OpenAPI 3.1, Parcelio Shipments API v1.4.0). It targets the Prism mock
+  on `{{baseUrl}}`; select the `local` environment.
+
+  ## Auth
+
+  - Collection default: API key in the `X-API-Key` header (`{{apiKey}}`).
+    Every request with `auth: inherit` picks this up.
+  - Write operations (create, dispatch, webhooks) override with
+    `auth: bearer` and `{{oauthToken}}`, mirroring the spec's OAuth2
+    security requirement. Prism accepts any non-empty token.
+  - `apiKey` and `oauthToken` are declared as secrets in
+    `environments/local.bru` (`vars:secret`), so their values are never
+    stored in the repo. Set them in the Bruno app, or pass
+    `--env-var apiKey=... --env-var oauthToken=...` to the CLI.
+
+  ## Layout
+
+  One folder per OpenAPI tag. `Shipments` also contains two negative
+  tests (missing key -> 401, invalid body -> 422). `Create shipment`
+  stores the returned `id` in the runtime variable `shipmentId`, which
+  `Get shipment` and `Dispatch shipment` then use.
+}

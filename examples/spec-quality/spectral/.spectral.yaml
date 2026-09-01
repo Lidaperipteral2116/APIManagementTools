@@ -1,0 +1,98 @@
+# Spectral ruleset for the Parcelio demo spec.
+#
+# Extends the built-in OpenAPI ruleset and adds rules that catch the
+# deliberate defects in specs/demo-api.yaml (thin or missing descriptions,
+# one snake_case operationId, one missing summary) plus two conventions the
+# spec is supposed to follow everywhere (cursor pagination, RFC 9457 errors).
+#
+# Run from the repo root:
+#   npx -y @stoplight/spectral-cli@6.16.3 lint -r examples/spec-quality/spectral/.spectral.yaml specs/demo-api.yaml
+extends: spectral:oas
+
+rules:
+  # The built-in rule only checks that a description exists. Ours checks
+  # existence and length in one rule so each operation gets one finding,
+  # not two. Turn the built-in off to avoid the duplicate.
+  operation-description: off
+
+  parcelio-operation-description:
+    description: Every operation needs a description of at least 40 characters. "Get package." tells a reader nothing the operationId did not.
+    message: "{{property}} {{error}}"
+    severity: warn
+    given: "$.paths[*][get,put,post,delete,options,head,patch,trace]"
+    then:
+      - field: description
+        function: truthy
+      - field: description
+        function: length
+        functionOptions:
+          min: 40
+
+  parcelio-operation-summary:
+    description: Every operation needs a summary; docs tools and MCP generators use it as the display name.
+    severity: warn
+    given: "$.paths[*][get,put,post,delete,options,head,patch,trace]"
+    then:
+      field: summary
+      function: truthy
+
+  parcelio-operationid-camel-case:
+    description: operationIds must be lowerCamelCase (listShipments, not list_shipments). SDK and MCP generators turn them into identifiers.
+    severity: warn
+    given: "$.paths[*][get,put,post,delete,options,head,patch,trace].operationId"
+    then:
+      function: casing
+      functionOptions:
+        type: camel
+
+  parcelio-security-scheme-description:
+    description: Every security scheme needs a description saying how to obtain the credential.
+    severity: warn
+    given: "$.components.securitySchemes[*]"
+    then:
+      field: description
+      function: truthy
+
+  parcelio-list-returns-next-cursor:
+    description: An operation that accepts a `cursor` query parameter is a list operation and its 200 response must carry `next_cursor`.
+    message: "List operation response schema has no next_cursor property."
+    severity: warn
+    # Spectral's JSONPath filter language (nimma/jsep) has no arrow functions,
+    # no `JSON`, and no nested paths, so "has a parameter named cursor" is a
+    # positional check over the first four parameters. Extend it if your spec
+    # lists `cursor` later than that.
+    given: "$.paths[*][?(@property === 'get' && @.parameters && ((@.parameters[0] && @.parameters[0].name === 'cursor') || (@.parameters[1] && @.parameters[1].name === 'cursor') || (@.parameters[2] && @.parameters[2].name === 'cursor') || (@.parameters[3] && @.parameters[3].name === 'cursor')))].responses['200'].content['application/json'].schema"
+    then:
+      function: schema
+      functionOptions:
+        # Double `not`: ajv reports anyOf failures once per branch at nested
+        # paths, which Spectral turns into several findings. Wrapping the
+        # condition in not/not makes ajv report a single root-level failure.
+        schema:
+          not:
+            not:
+              anyOf:
+                - required: [properties]
+                  properties:
+                    properties:
+                      required: [next_cursor]
+                - required: [allOf]
+                  properties:
+                    allOf:
+                      type: array
+                      contains:
+                        required: [properties]
+                        properties:
+                          properties:
+                            required: [next_cursor]
+
+  parcelio-4xx-problem-json:
+    description: Every 4xx response must be application/problem+json (RFC 9457) so clients can parse every error the same way.
+    # Spectral lints the $ref-resolved document and reports a finding once per
+    # resolved location, so responses shared via components.responses show up
+    # at components.responses.<Name>, not at every operation that uses them.
+    severity: warn
+    given: "$.paths[*][*].responses[?(@property.match(/^4\\d\\d$/))].content"
+    then:
+      field: application/problem+json
+      function: truthy

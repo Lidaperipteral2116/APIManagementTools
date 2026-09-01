@@ -1,0 +1,77 @@
+meta {
+  name: Create shipment
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/shipments
+  body: json
+  auth: bearer
+}
+
+headers {
+  content-type: application/json
+  Idempotency-Key: bruno-demo-{{$randomUUID}}
+}
+
+auth:bearer {
+  token: {{oauthToken}}
+}
+
+body:json {
+  {
+    "reference": "ORDER-10422",
+    "service_code": "ups_ground",
+    "ship_from": {
+      "name": "Parcelio Warehouse 3",
+      "line1": "1200 Industrial Way",
+      "city": "Reno",
+      "region": "NV",
+      "postal_code": "89502",
+      "country": "US"
+    },
+    "ship_to": {
+      "name": "Dana Whitfield",
+      "line1": "48 Maple St",
+      "city": "Portland",
+      "region": "OR",
+      "postal_code": "97209",
+      "country": "US",
+      "phone": "+15035550188"
+    },
+    "packages": [
+      {
+        "weight": { "value": 2.4, "unit": "kg" },
+        "dimensions": { "length": 30, "width": 20, "height": 15, "unit": "cm" }
+      }
+    ]
+  }
+}
+
+vars:post-response {
+  shipmentId: res.body.id
+}
+
+assert {
+  res.status: eq 201
+  res.headers['content-type']: contains application/json
+  res.body.id: matches ^shp_[A-Za-z0-9]{8,}$
+  res.body.status: eq draft
+  res.body.packages: isArray
+}
+
+tests {
+  test("response echoes the requested service and carries timestamps", function () {
+    const body = res.getBody();
+    expect(body.service_code).to.equal("ups_ground");
+    expect(body).to.include.all.keys("created_at", "updated_at", "carrier_id");
+  });
+}
+
+docs {
+  `createShipment`. OAuth2 in the spec, so this request overrides the
+  collection API key with `auth: bearer` and `{{oauthToken}}`. The body is
+  the spec's `domestic` request example verbatim. The returned `id` is
+  stored in `shipmentId` for the next requests in this folder.
+}

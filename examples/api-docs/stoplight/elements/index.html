@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Parcelio Shipments API - Stoplight Elements</title>
+    <!-- Pinned to @stoplight/elements 9.0.25. Both URLs verified with curl -I (HTTP 200) on 2026-09-01. -->
+    <script src="https://unpkg.com/@stoplight/elements@9.0.25/web-components.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements@9.0.25/styles.min.css">
+    <style>
+      html, body { height: 100%; margin: 0; }
+    </style>
+  </head>
+  <body>
+    <!--
+      apiDescriptionUrl is relative to this file. Served from the repo root
+      (npx -y serve@14.2.6 -l 3000 .), this page lives at
+      /examples/api-docs/stoplight/elements/ so four "../" reach the repo root.
+      router="hash" keeps deep links working under a static file server.
+    -->
+    <elements-api
+      apiDescriptionUrl="../../../../specs/demo-api.yaml"
+      router="hash"
+      layout="sidebar"
+    ></elements-api>
+  </body>
+</html>

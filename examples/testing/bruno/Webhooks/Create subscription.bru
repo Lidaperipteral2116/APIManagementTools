@@ -1,0 +1,46 @@
+meta {
+  name: Create subscription
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/webhooks
+  body: json
+  auth: bearer
+}
+
+headers {
+  content-type: application/json
+}
+
+auth:bearer {
+  token: {{oauthToken}}
+}
+
+body:json {
+  {
+    "url": "https://hooks.example.com/parcelio",
+    "events": ["shipment.status_changed", "shipment.delivered"],
+    "description": "Bruno demo subscription"
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.headers['content-type']: contains application/json
+  res.body.id: matches ^whk_[A-Za-z0-9]{8,}$
+  res.body.secret: startsWith whsec_
+  res.body.events: isArray
+}
+
+tests {
+  test("secret is returned exactly once, on creation", function () {
+    expect(res.getBody().secret).to.be.a("string").that.is.not.empty;
+  });
+}
+
+docs {
+  `createWebhookSubscription` (OAuth2 scope `webhooks:manage`). Uses
+  `auth: bearer` with `{{oauthToken}}`.
+}

@@ -1,0 +1,32 @@
+meta {
+  name: Get carrier services
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/carriers/car_ups/services
+  body: none
+  auth: inherit
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains application/json
+  res.body.data: isArray
+  res.body.data[0].service_code: isString
+  res.body.data[0].transit_days.min: isNumber
+}
+
+tests {
+  test("service codes are usable by createShipment", function () {
+    const services = res.getBody().data;
+    expect(services.length).to.be.greaterThan(0);
+    services.forEach((s) => expect(s.service_code).to.be.a("string").that.is.not.empty);
+  });
+}
+
+docs {
+  `listCarrierServices`. Not paginated (the response is a plain `data`
+  array without `next_cursor`).
+}

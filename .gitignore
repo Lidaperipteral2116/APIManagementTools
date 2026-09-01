@@ -1,0 +1,20 @@
+# dependencies and build output
+node_modules/
+build/
+dist/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.hypothesis/
+
+# local secrets (every example ships a .env.example instead)
+.env
+.env.*
+!.env.example
+
+# tool output
+results.json
+*.log
+.DS_Store
+.schemathesis/

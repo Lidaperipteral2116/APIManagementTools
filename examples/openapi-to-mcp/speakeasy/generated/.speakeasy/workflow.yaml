@@ -1,0 +1,16 @@
+workflowVersion: 1.0.0
+speakeasyVersion: latest
+sources:
+    Parcelio Shipments API:
+        inputs:
+            - location: ../../../../specs/demo-api.yaml
+        overlays:
+            - location: ../overlay.yaml
+            - location: ../overlay-bearer-auth.yaml
+        output: .speakeasy/out.openapi.yaml
+        registry:
+            location: registry.speakeasyapi.dev/<org>/<workspace>/parcelio-shipments-api
+targets:
+    parcelio-mcp:
+        target: mcp-typescript
+        source: Parcelio Shipments API

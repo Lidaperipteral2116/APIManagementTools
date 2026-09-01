@@ -1,0 +1,2109 @@
+openapi: 3.1.0
+info:
+  title: Parcelio Shipments API
+  version: 1.4.0
+  summary: 'Create shipments, print labels, track packages, and receive delivery events.'
+  description: |
+    Parcelio is a fictional multi-carrier shipping API used as the shared demo
+    spec for the awesome-api-management repository. It is deliberately
+    imperfect: roughly a third of the operations have thin or missing
+    descriptions so that spec-quality and MCP examples have something real
+    to detect and fix. Everything else (schemas, security, pagination,
+    webhooks, file upload) is complete and validates.
+
+    ## Authentication
+
+    Read operations accept an API key in the `X-API-Key` header. Operations
+    that create, change, or delete resources require an OAuth 2.0 access
+    token obtained through the authorization-code flow, with the scopes
+    listed on each operation.
+
+    ## Pagination
+
+    Every list endpoint uses cursor pagination. Pass `limit` to control page
+    size and `cursor` (from the previous response's `next_cursor`) to fetch
+    the next page. `next_cursor` is `null` on the last page.
+
+    ## Idempotency
+
+    `POST /shipments` accepts an optional `Idempotency-Key` header. Repeating
+    a request with the same key within 24 hours returns the original result.
+  termsOfService: 'https://parcelio.example.com/terms'
+  contact:
+    name: Parcelio API team
+    email: api@parcelio.example.com
+    url: 'https://parcelio.example.com/support'
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: 'https://api.parcelio.example.com/v1'
+    description: Production (fictional; does not resolve)
+  - url: 'http://127.0.0.1:4010'
+    description: Local Prism mock server (see specs/README.md)
+tags:
+  - name: Shipments
+    description: A shipment is a set of packages moving from one address to another under a single carrier service.
+  - name: Packages
+    description: Physical parcels that belong to a shipment.
+  - name: Tracking
+    description: Carrier scan events and current status for a shipment.
+  - name: Carriers
+    description: Supported carriers and their service levels.
+  - name: Rates
+    description: Price quotes before a shipment is created.
+  - name: Addresses
+    description: Address normalisation and validation.
+  - name: Pickups
+    description: Scheduled carrier collections.
+  - name: Webhooks
+    description: Subscriptions that push shipment events to your endpoint.
+security:
+  - ApiKeyAuth: []
+paths:
+  /shipments:
+    get:
+      tags:
+        - Shipments
+      summary: List shipments
+      operationId: listShipments
+      description: |
+        Returns shipments belonging to the authenticated account, newest
+        first. Filter by `status` to find shipments in a given lifecycle
+        stage, or by `carrier_id` to see everything moving with one carrier.
+        Results are paginated with a cursor; follow `next_cursor` until it is
+        `null`.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          description: Only return shipments in this lifecycle status.
+          schema:
+            $ref: '#/components/schemas/ShipmentStatus'
+        - name: carrier_id
+          in: query
+          description: Only return shipments assigned to this carrier.
+          schema:
+            type: string
+            examples:
+              - car_ups
+        - name: created_after
+          in: query
+          description: Only return shipments created at or after this instant (RFC 3339).
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: A page of shipments.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipmentList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    post:
+      tags:
+        - Shipments
+      summary: Create a shipment
+      operationId: createShipment
+      description: |
+        Creates a shipment in `draft` status from a sender address, a
+        recipient address, one or more packages, and a carrier service.
+        No label is purchased and nothing is sent to the carrier until you
+        call `dispatchShipment`. Use `quoteRates` first if you need a price
+        before committing to a service.
+
+        Send an `Idempotency-Key` header to make retries safe.
+      security:
+        - OAuth2:
+            - 'shipments:write'
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShipmentCreate'
+            examples:
+              domestic:
+                summary: Single-package domestic shipment
+                value:
+                  reference: ORDER-10422
+                  service_code: ups_ground
+                  ship_from:
+                    name: Parcelio Warehouse 3
+                    line1: 1200 Industrial Way
+                    city: Reno
+                    region: NV
+                    postal_code: '89502'
+                    country: US
+                  ship_to:
+                    name: Dana Whitfield
+                    line1: 48 Maple St
+                    city: Portland
+                    region: OR
+                    postal_code: '97209'
+                    country: US
+                    phone: '+15035550188'
+                  packages:
+                    - weight:
+                        value: 2.4
+                        unit: kg
+                      dimensions:
+                        length: 30
+                        width: 20
+                        height: 15
+                        unit: cm
+      responses:
+        '201':
+          description: Shipment created.
+          headers:
+            Location:
+              description: URL of the new shipment.
+              schema:
+                type: string
+                format: uri
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shipment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  '/shipments/{shipmentId}':
+    parameters:
+      - $ref: '#/components/parameters/ShipmentId'
+    get:
+      tags:
+        - Shipments
+      summary: Get a shipment
+      operationId: getShipment
+      description: |
+        Returns the full shipment record including its packages, the
+        currently assigned carrier service, cost, and the latest tracking
+        status. Use `listTrackingEvents` for the complete scan history.
+      responses:
+        '200':
+          description: The shipment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shipment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - Shipments
+      summary: Update a shipment
+      operationId: updateShipment
+      description: |
+        Updates the mutable fields of a `draft` shipment: reference, service
+        code, recipient address, label format, and metadata. Returns the
+        updated shipment. Dispatched shipments cannot be changed and return
+        `409`; cancel and recreate instead.
+      security:
+        - OAuth2:
+            - 'shipments:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShipmentUpdate'
+      responses:
+        '200':
+          description: The updated shipment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shipment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+        - Shipments
+      summary: Cancel a shipment
+      operationId: cancelShipment
+      description: |
+        Cancels a shipment. Draft shipments are deleted outright. Dispatched
+        shipments are voided with the carrier, which may take up to a few
+        minutes; the shipment moves to `cancelled` once the carrier confirms.
+        Shipments that are already `in_transit` or `delivered` cannot be
+        cancelled and return `409`.
+      security:
+        - OAuth2:
+            - 'shipments:write'
+      responses:
+        '204':
+          description: Shipment cancelled or deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  '/shipments/{shipmentId}/dispatch':
+    parameters:
+      - $ref: '#/components/parameters/ShipmentId'
+    post:
+      tags:
+        - Shipments
+      summary: Dispatch shipment
+      operationId: dispatchShipment
+      security:
+        - OAuth2:
+            - 'shipments:write'
+      responses:
+        '200':
+          description: Shipment dispatched.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shipment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: The account has insufficient balance to purchase the label.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      description: |
+        Sends a `draft` shipment to the carrier and purchases its label.
+        Returns the shipment with `status: dispatched`, a `tracking_number`
+        on every package, and the `cost` charged. Returns `409` if the
+        shipment is not in `draft` and `402` if the account balance cannot
+        cover the label. International shipments need a `commercial_invoice`
+        document first (see `uploadShipmentDocument`).
+  '/shipments/{shipmentId}/label':
+    parameters:
+      - $ref: '#/components/parameters/ShipmentId'
+    get:
+      tags:
+        - Shipments
+      summary: Download the shipping label
+      operationId: getShipmentLabel
+      description: |
+        Returns the carrier label for a dispatched shipment. Choose the
+        format with the `Accept` header: `application/pdf` for a printable
+        page, or `image/png` for a 4x6 inch thermal-printer image. Draft
+        shipments have no label and return `409`.
+      responses:
+        '200':
+          description: The label document.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                contentMediaType: application/pdf
+                contentEncoding: binary
+            image/png:
+              schema:
+                type: string
+                contentMediaType: image/png
+                contentEncoding: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  '/shipments/{shipmentId}/documents':
+    parameters:
+      - $ref: '#/components/parameters/ShipmentId'
+    get:
+      tags:
+        - Shipments
+      summary: List shipment documents
+      operationId: listShipmentDocuments
+      description: |
+        Returns customs forms, commercial invoices, and any documents you
+        uploaded with `uploadShipmentDocument`. Carrier-generated documents
+        appear here automatically after dispatch.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of documents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+        - Shipments
+      summary: Upload a shipment document
+      operationId: uploadShipmentDocument
+      description: |
+        Attaches a document such as a commercial invoice or a dangerous-goods
+        declaration to a shipment. Accepted types are PDF, PNG, and JPEG up
+        to 10 MB. International shipments must have a `commercial_invoice`
+        document before `dispatchShipment` will succeed.
+      security:
+        - OAuth2:
+            - 'shipments:write'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - type
+              properties:
+                file:
+                  type: string
+                  contentEncoding: binary
+                  description: The document contents.
+                type:
+                  $ref: '#/components/schemas/DocumentType'
+                description:
+                  type: string
+                  maxLength: 200
+                  description: Free-text note shown alongside the document.
+            encoding:
+              file:
+                contentType: 'application/pdf, image/png, image/jpeg'
+      responses:
+        '201':
+          description: Document stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: The file exceeds 10 MB.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '415':
+          description: Unsupported file type.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  '/shipments/{shipmentId}/packages':
+    parameters:
+      - $ref: '#/components/parameters/ShipmentId'
+    get:
+      tags:
+        - Packages
+      operationId: listPackages
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of packages.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PackageList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      summary: List packages
+      description: |
+        Returns the packages that belong to a shipment, in the order they
+        were added. Results are paginated with a cursor; follow `next_cursor`
+        until it is `null`. Use `getPackage` for a single package by id.
+    post:
+      tags:
+        - Packages
+      summary: Add a package to a shipment
+      operationId: addPackage
+      description: |
+        Adds a package to a `draft` shipment. Weight and dimensions are
+        required because carriers price on dimensional weight. Once a
+        shipment is dispatched its packages are frozen and this returns
+        `409`.
+      security:
+        - OAuth2:
+            - 'shipments:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PackageCreate'
+      responses:
+        '201':
+          description: Package added.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Package'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  '/packages/{packageId}':
+    parameters:
+      - $ref: '#/components/parameters/PackageId'
+    get:
+      tags:
+        - Packages
+      summary: Get package
+      operationId: getPackage
+      description: |
+        Returns a single package by id, including its weight, dimensions,
+        declared value, and the carrier tracking number once the parent
+        shipment has been dispatched.
+      responses:
+        '200':
+          description: The package.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Package'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Packages
+      summary: Remove package
+      operationId: removePackage
+      security:
+        - OAuth2:
+            - 'shipments:write'
+      responses:
+        '204':
+          description: Package removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      description: |
+        Removes a package from a `draft` shipment. Returns `204` with no
+        body. Once the shipment is dispatched its packages are frozen and
+        this returns `409`. A shipment must keep at least one package; use
+        `cancelShipment` to discard the whole shipment.
+  '/tracking/{trackingNumber}':
+    get:
+      tags:
+        - Tracking
+      summary: Track by tracking number
+      operationId: getTrackingByNumber
+      description: |
+        Looks up current status and the most recent scan events for a
+        carrier tracking number. Works for shipments created through
+        Parcelio and, for supported carriers, for any tracking number the
+        carrier recognises. This endpoint is rate-limited more strictly than
+        the rest of the API (see `429`).
+      parameters:
+        - name: trackingNumber
+          in: path
+          required: true
+          description: Carrier-issued tracking number.
+          schema:
+            type: string
+            minLength: 6
+            maxLength: 40
+            examples:
+              - 1Z999AA10123456784
+        - name: carrier_id
+          in: query
+          description: Disambiguates when several carriers use the same number format.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current tracking state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackingSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  '/shipments/{shipmentId}/events':
+    parameters:
+      - $ref: '#/components/parameters/ShipmentId'
+    get:
+      tags:
+        - Tracking
+      summary: List tracking events
+      operationId: listTrackingEvents
+      description: |
+        Returns every scan event the carrier has reported for the shipment,
+        oldest first, so the list reads as a timeline. Events are appended
+        as they arrive; subscribe to the `shipment.status_changed` webhook
+        instead of polling if you need them in real time.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of tracking events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackingEventList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /tracking/events:
+    post:
+      tags:
+        - Tracking
+      summary: Ingest tracking event
+      operationId: tracking_event_ingest
+      security:
+        - OAuth2:
+            - 'tracking:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackingEventCreate'
+      responses:
+        '202':
+          description: Event accepted for processing.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+      description: |
+        Records a carrier scan event for a tracking number. Intended for
+        carrier integrations, not shipping customers; requires the
+        `tracking:write` scope. Returns `202` and processes the event
+        asynchronously. Once processed it appears in `listTrackingEvents`
+        and triggers webhook deliveries.
+  /carriers:
+    get:
+      tags:
+        - Carriers
+      summary: List carriers
+      operationId: listCarriers
+      description: |
+        Returns the carriers available to your account. Carriers you have
+        connected credentials for are marked `enabled: true`; the rest are
+        listed so you can see what is supported. Use `listCarrierServices`
+        to get the service codes needed by `createShipment`.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: enabled
+          in: query
+          description: Only return carriers with connected credentials.
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: A page of carriers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarrierList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  '/carriers/{carrierId}':
+    parameters:
+      - $ref: '#/components/parameters/CarrierId'
+    get:
+      tags:
+        - Carriers
+      summary: Get carrier
+      operationId: getCarrier
+      description: |
+        Returns one carrier by id, including whether this account has
+        connected credentials (`enabled`), the countries it can ship from,
+        and a template for the carrier's own tracking page. Use
+        `listCarrierServices` for its service levels and codes.
+      responses:
+        '200':
+          description: The carrier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Carrier'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  '/carriers/{carrierId}/services':
+    parameters:
+      - $ref: '#/components/parameters/CarrierId'
+    get:
+      tags:
+        - Carriers
+      summary: List carrier services
+      operationId: listCarrierServices
+      description: |
+        Returns the service levels a carrier offers (for example ground,
+        two-day, overnight) with their `service_code`, transit-time
+        estimate, and package limits. The `service_code` is what you pass
+        to `createShipment` and `quoteRates`.
+      responses:
+        '200':
+          description: The carrier's services.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CarrierService'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /rates:
+    post:
+      tags:
+        - Rates
+      summary: Quote rates
+      operationId: quoteRates
+      description: |
+        Returns a price and transit estimate for every enabled carrier
+        service that can move the given packages between the two addresses.
+        Quotes are valid for 15 minutes. Nothing is created; this call is
+        safe to make repeatedly while a user compares options.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RateRequest'
+      responses:
+        '200':
+          description: 'Available rates, cheapest first.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /addresses/validate:
+    post:
+      tags:
+        - Addresses
+      summary: Validate an address
+      operationId: validateAddress
+      description: |
+        Checks an address against carrier and postal databases and returns
+        a normalised version with any corrections applied. Use the
+        `residential` flag in the response to pick the right service level;
+        several carriers surcharge residential deliveries.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Address'
+      responses:
+        '200':
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressValidation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  /pickups:
+    post:
+      tags:
+        - Pickups
+      summary: Schedule a pickup
+      operationId: schedulePickup
+      description: |
+        Asks a carrier to collect one or more dispatched shipments from an
+        address within a time window. All shipments in one pickup must use
+        the same carrier. Carriers typically need at least two hours' notice
+        and return `422` for windows they cannot honour.
+      security:
+        - OAuth2:
+            - 'shipments:write'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PickupCreate'
+      responses:
+        '201':
+          description: Pickup scheduled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pickup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  '/pickups/{pickupId}':
+    parameters:
+      - name: pickupId
+        in: path
+        required: true
+        description: Pickup identifier.
+        schema:
+          type: string
+          pattern: '^pk_[A-Za-z0-9]{8,}$'
+          examples:
+            - pk_7Hq2mZp9Lc
+    get:
+      tags:
+        - Pickups
+      summary: Get a pickup
+      operationId: getPickup
+      description: |
+        Returns a scheduled pickup, including the carrier confirmation
+        number once the carrier has acknowledged it.
+      responses:
+        '200':
+          description: The pickup.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pickup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Pickups
+      summary: Cancel pickup
+      operationId: cancelPickup
+      security:
+        - OAuth2:
+            - 'shipments:write'
+      responses:
+        '204':
+          description: Pickup cancelled.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      description: |
+        Cancels a scheduled pickup with the carrier. Returns `204` with no
+        body. Pickups that are already `completed` cannot be cancelled and
+        return `409`. The shipments included in the pickup are not affected.
+  /webhooks:
+    get:
+      tags:
+        - Webhooks
+      summary: List webhook subscriptions
+      operationId: listWebhookSubscriptions
+      description: |
+        Returns the webhook subscriptions configured for your account,
+        including each subscription's delivery health over the last 24
+        hours.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: A page of subscriptions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscriptionList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+        - Webhooks
+      summary: Create a webhook subscription
+      operationId: createWebhookSubscription
+      description: |
+        Registers an HTTPS endpoint to receive shipment events. The
+        response includes a `secret` exactly once; use it to verify the
+        `Parcelio-Signature` header on incoming deliveries. Deliveries are
+        retried with exponential backoff for up to 24 hours on non-2xx
+        responses.
+      security:
+        - OAuth2:
+            - 'webhooks:manage'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookSubscriptionCreate'
+      responses:
+        '201':
+          description: Subscription created. The `secret` field is only returned here.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscriptionWithSecret'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationFailed'
+  '/webhooks/{webhookId}':
+    parameters:
+      - $ref: '#/components/parameters/WebhookId'
+    get:
+      tags:
+        - Webhooks
+      summary: Get webhook subscription
+      operationId: getWebhookSubscription
+      description: |
+        Returns a webhook subscription by id, including its endpoint URL,
+        subscribed events, and delivery health over the last 24 hours. The
+        signing `secret` is not included; it is only returned once, by
+        `createWebhookSubscription`.
+      responses:
+        '200':
+          description: The subscription.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSubscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Webhooks
+      summary: Delete a webhook subscription
+      operationId: deleteWebhookSubscription
+      description: |
+        Stops deliveries to the endpoint immediately. In-flight retries are
+        abandoned. This cannot be undone; create a new subscription to
+        resume.
+      security:
+        - OAuth2:
+            - 'webhooks:manage'
+      responses:
+        '204':
+          description: Subscription deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  '/webhooks/{webhookId}/test':
+    parameters:
+      - $ref: '#/components/parameters/WebhookId'
+    post:
+      tags:
+        - Webhooks
+      summary: Send test event
+      operationId: testWebhookSubscription
+      security:
+        - OAuth2:
+            - 'webhooks:manage'
+      responses:
+        '200':
+          description: Result of the test delivery.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookTestResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      description: |
+        Sends a synthetic `shipment.status_changed` event to the
+        subscription's endpoint and returns the delivery result: whether it
+        was delivered, the HTTP status your endpoint returned, and how long
+        it took. Use it after creating a subscription to confirm signature
+        verification works before real events arrive.
+webhooks:
+  shipmentStatusChanged:
+    post:
+      summary: Shipment status changed
+      operationId: onShipmentStatusChanged
+      description: |
+        Sent to every active subscription that includes the
+        `shipment.status_changed` event whenever a shipment moves between
+        lifecycle states. Verify the `Parcelio-Signature` header (HMAC-SHA256
+        of the raw body using your subscription secret) before trusting the
+        payload. Respond with any 2xx status within 10 seconds; anything
+        else is retried.
+      parameters:
+        - name: Parcelio-Signature
+          in: header
+          required: true
+          description: '`t=<unix-timestamp>,v1=<hex hmac-sha256>` computed over `<timestamp>.<raw body>`.'
+          schema:
+            type: string
+        - name: Parcelio-Delivery-Id
+          in: header
+          required: true
+          description: Unique id for this delivery attempt; use it to de-duplicate retries.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShipmentStatusChangedEvent'
+      responses:
+        2XX:
+          description: Acknowledged. Any 2xx status stops retries.
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Account API key. Sufficient for read operations. Create keys in the
+        Parcelio dashboard under Settings, API keys.
+    OAuth2:
+      type: oauth2
+      description: |
+        Required for operations that create, change, or delete resources.
+        Tokens expire after one hour; use the refresh token to obtain a new
+        one.
+      flows:
+        authorizationCode:
+          authorizationUrl: 'https://auth.parcelio.example.com/oauth/authorize'
+          tokenUrl: 'https://auth.parcelio.example.com/oauth/token'
+          refreshUrl: 'https://auth.parcelio.example.com/oauth/token'
+          scopes:
+            'shipments:read': 'Read shipments, packages, and tracking events.'
+            'shipments:write': 'Create, update, dispatch, and cancel shipments, packages, and pickups.'
+            'tracking:write': Push carrier tracking events (carrier integrations only).
+            'webhooks:manage': 'Create, test, and delete webhook subscriptions.'
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      description: Maximum number of items to return per page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor from a previous response's `next_cursor`. Omit for the first page.
+      schema:
+        type: string
+        maxLength: 512
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-generated unique key (UUID recommended) that makes the request safe to retry for 24 hours.
+      schema:
+        type: string
+        maxLength: 255
+    ShipmentId:
+      name: shipmentId
+      in: path
+      required: true
+      description: Shipment identifier.
+      schema:
+        type: string
+        pattern: '^shp_[A-Za-z0-9]{8,}$'
+        examples:
+          - shp_9f3KqLm2Xa
+    PackageId:
+      name: packageId
+      in: path
+      required: true
+      description: Package identifier.
+      schema:
+        type: string
+        pattern: '^pkg_[A-Za-z0-9]{8,}$'
+        examples:
+          - pkg_4Rt8sWq1Zn
+    CarrierId:
+      name: carrierId
+      in: path
+      required: true
+      description: 'Carrier identifier, for example `car_ups`.'
+      schema:
+        type: string
+        pattern: '^car_[a-z0-9_]{2,}$'
+        examples:
+          - car_ups
+    WebhookId:
+      name: webhookId
+      in: path
+      required: true
+      description: Webhook subscription identifier.
+      schema:
+        type: string
+        pattern: '^whk_[A-Za-z0-9]{8,}$'
+        examples:
+          - whk_Bd72kPz4Qm
+  responses:
+    BadRequest:
+      description: The request body or parameters could not be parsed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: 'Missing or invalid credentials, or the token lacks the required scope.'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: No resource with that identifier exists in this account.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: The resource is in a state that does not allow this operation.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ValidationFailed:
+      description: The request was well-formed but failed validation. `errors` lists each failing field.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblem'
+    RateLimited:
+      description: Too many requests. Retry after the number of seconds in `Retry-After`.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI identifying the problem type.
+          examples:
+            - 'https://api.parcelio.example.com/problems/not-found'
+        title:
+          type: string
+          description: Short human-readable summary.
+          examples:
+            - Shipment not found
+        status:
+          type: integer
+          description: HTTP status code.
+          examples:
+            - 404
+        detail:
+          type: string
+          description: Explanation specific to this occurrence.
+        instance:
+          type: string
+          format: uri
+          description: URI of the specific occurrence.
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required:
+            - errors
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                required:
+                  - field
+                  - message
+                properties:
+                  field:
+                    type: string
+                    description: JSON pointer to the failing field.
+                    examples:
+                      - /ship_to/postal_code
+                  message:
+                    type: string
+                    examples:
+                      - must match the country's postal code format
+    Pagination:
+      type: object
+      description: Cursor pagination envelope fields shared by every list response.
+      required:
+        - next_cursor
+        - has_more
+      properties:
+        next_cursor:
+          type:
+            - string
+            - 'null'
+          description: Pass as `cursor` to fetch the next page. `null` when this is the last page.
+          examples:
+            - eyJpZCI6InNocF85ZjNLcUxtMlhhIn0
+        has_more:
+          type: boolean
+          description: True when another page exists.
+    ShipmentStatus:
+      type: string
+      description: Lifecycle state of a shipment.
+      enum:
+        - draft
+        - dispatched
+        - in_transit
+        - out_for_delivery
+        - delivered
+        - exception
+        - cancelled
+    Address:
+      type: object
+      required:
+        - name
+        - line1
+        - city
+        - postal_code
+        - country
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Person or company name.
+          examples:
+            - Dana Whitfield
+        company:
+          type: string
+          maxLength: 100
+        line1:
+          type: string
+          maxLength: 120
+          examples:
+            - 48 Maple St
+        line2:
+          type: string
+          maxLength: 120
+        city:
+          type: string
+          maxLength: 80
+          examples:
+            - Portland
+        region:
+          type: string
+          maxLength: 80
+          description: 'State, province, or region code where applicable.'
+          examples:
+            - OR
+        postal_code:
+          type: string
+          maxLength: 20
+          examples:
+            - '97209'
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 country code.
+          examples:
+            - US
+        phone:
+          type: string
+          maxLength: 30
+          description: E.164 phone number. Required by most carriers for international shipments.
+          examples:
+            - '+15035550188'
+        email:
+          type: string
+          format: email
+        residential:
+          type: boolean
+          description: Whether this is a residential delivery point. Affects surcharges.
+    AddressValidation:
+      type: object
+      required:
+        - valid
+        - normalized
+      properties:
+        valid:
+          type: boolean
+          description: Whether the address is deliverable.
+        normalized:
+          $ref: '#/components/schemas/Address'
+        corrections:
+          type: array
+          description: Fields that were changed during normalisation.
+          items:
+            type: object
+            required:
+              - field
+              - original
+              - corrected
+            properties:
+              field:
+                type: string
+                examples:
+                  - postal_code
+              original:
+                type: string
+                examples:
+                  - '97208'
+              corrected:
+                type: string
+                examples:
+                  - '97209'
+        residential:
+          type:
+            - boolean
+            - 'null'
+          description: 'Residential classification, or `null` if the carrier could not determine it.'
+    Weight:
+      type: object
+      required:
+        - value
+        - unit
+      properties:
+        value:
+          type: number
+          exclusiveMinimum: 0
+          examples:
+            - 2.4
+        unit:
+          type: string
+          enum:
+            - kg
+            - lb
+    Dimensions:
+      type: object
+      required:
+        - length
+        - width
+        - height
+        - unit
+      properties:
+        length:
+          type: number
+          exclusiveMinimum: 0
+          examples:
+            - 30
+        width:
+          type: number
+          exclusiveMinimum: 0
+          examples:
+            - 20
+        height:
+          type: number
+          exclusiveMinimum: 0
+          examples:
+            - 15
+        unit:
+          type: string
+          enum:
+            - cm
+            - in
+    Money:
+      type: object
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: string
+          description: Decimal amount as a string to avoid floating-point rounding.
+          pattern: '^-?\d+(\.\d{1,4})?$'
+          examples:
+            - '12.45'
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 currency code.
+          examples:
+            - USD
+    PackageCreate:
+      type: object
+      required:
+        - weight
+        - dimensions
+      properties:
+        weight:
+          $ref: '#/components/schemas/Weight'
+        dimensions:
+          $ref: '#/components/schemas/Dimensions'
+        reference:
+          type: string
+          maxLength: 64
+          description: 'Your identifier for this package, printed on the label.'
+        declared_value:
+          $ref: '#/components/schemas/Money'
+        contents:
+          type: string
+          maxLength: 200
+          description: 'Short description of contents, required for customs.'
+    Package:
+      allOf:
+        - $ref: '#/components/schemas/PackageCreate'
+        - type: object
+          required:
+            - id
+            - shipment_id
+            - created_at
+          properties:
+            id:
+              type: string
+              examples:
+                - pkg_4Rt8sWq1Zn
+            shipment_id:
+              type: string
+              examples:
+                - shp_9f3KqLm2Xa
+            tracking_number:
+              type:
+                - string
+                - 'null'
+              description: 'Carrier tracking number, assigned at dispatch.'
+              examples:
+                - 1Z999AA10123456784
+            created_at:
+              type: string
+              format: date-time
+    PackageList:
+      allOf:
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Package'
+        - $ref: '#/components/schemas/Pagination'
+    ShipmentCreate:
+      type: object
+      required:
+        - ship_from
+        - ship_to
+        - packages
+        - service_code
+      properties:
+        reference:
+          type: string
+          maxLength: 64
+          description: Your order or reference number. Searchable and printed on the label.
+          examples:
+            - ORDER-10422
+        service_code:
+          type: string
+          description: A `service_code` from `listCarrierServices`.
+          examples:
+            - ups_ground
+        ship_from:
+          $ref: '#/components/schemas/Address'
+        ship_to:
+          $ref: '#/components/schemas/Address'
+        packages:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PackageCreate'
+        label_format:
+          type: string
+          enum:
+            - pdf
+            - png
+          default: pdf
+          description: Preferred label format; both are always retrievable.
+        metadata:
+          type: object
+          description: Up to 20 string key-value pairs stored with the shipment.
+          maxProperties: 20
+          additionalProperties:
+            type: string
+            maxLength: 500
+    ShipmentUpdate:
+      type: object
+      description: Fields that may change while a shipment is still in `draft`.
+      properties:
+        reference:
+          type: string
+          maxLength: 64
+        service_code:
+          type: string
+        ship_to:
+          $ref: '#/components/schemas/Address'
+        label_format:
+          type: string
+          enum:
+            - pdf
+            - png
+        metadata:
+          type: object
+          maxProperties: 20
+          additionalProperties:
+            type: string
+            maxLength: 500
+    Shipment:
+      type: object
+      required:
+        - id
+        - status
+        - ship_from
+        - ship_to
+        - packages
+        - carrier_id
+        - service_code
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          examples:
+            - shp_9f3KqLm2Xa
+        status:
+          $ref: '#/components/schemas/ShipmentStatus'
+        reference:
+          type:
+            - string
+            - 'null'
+          examples:
+            - ORDER-10422
+        carrier_id:
+          type: string
+          examples:
+            - car_ups
+        service_code:
+          type: string
+          examples:
+            - ups_ground
+        ship_from:
+          $ref: '#/components/schemas/Address'
+        ship_to:
+          $ref: '#/components/schemas/Address'
+        packages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Package'
+        cost:
+          description: Total charged at dispatch. Absent on drafts.
+          $ref: '#/components/schemas/Money'
+        tracking_number:
+          type:
+            - string
+            - 'null'
+          description: Primary tracking number (first package). Assigned at dispatch.
+        estimated_delivery:
+          type:
+            - string
+            - 'null'
+          format: date
+          description: Carrier's estimated delivery date.
+        label_format:
+          type: string
+          enum:
+            - pdf
+            - png
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ShipmentList:
+      allOf:
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Shipment'
+        - $ref: '#/components/schemas/Pagination'
+    DocumentType:
+      type: string
+      enum:
+        - commercial_invoice
+        - customs_declaration
+        - dangerous_goods
+        - packing_list
+        - other
+    Document:
+      type: object
+      required:
+        - id
+        - shipment_id
+        - type
+        - filename
+        - content_type
+        - size_bytes
+        - created_at
+      properties:
+        id:
+          type: string
+          examples:
+            - doc_Ke82mQp1Vx
+        shipment_id:
+          type: string
+        type:
+          $ref: '#/components/schemas/DocumentType'
+        filename:
+          type: string
+          examples:
+            - invoice-10422.pdf
+        content_type:
+          type: string
+          examples:
+            - application/pdf
+        size_bytes:
+          type: integer
+          minimum: 0
+        description:
+          type:
+            - string
+            - 'null'
+        source:
+          type: string
+          enum:
+            - uploaded
+            - carrier
+          description: Whether you uploaded it or the carrier generated it.
+        download_url:
+          type: string
+          format: uri
+          description: Signed URL valid for one hour.
+        created_at:
+          type: string
+          format: date-time
+    DocumentList:
+      allOf:
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Document'
+        - $ref: '#/components/schemas/Pagination'
+    TrackingEventType:
+      type: string
+      enum:
+        - label_created
+        - picked_up
+        - arrived_at_facility
+        - departed_facility
+        - out_for_delivery
+        - delivered
+        - delivery_attempted
+        - exception
+        - returned
+    TrackingEvent:
+      type: object
+      required:
+        - id
+        - shipment_id
+        - type
+        - occurred_at
+      properties:
+        id:
+          type: string
+          examples:
+            - evt_Qm31zXp8Lr
+        shipment_id:
+          type: string
+        package_id:
+          type:
+            - string
+            - 'null'
+        type:
+          $ref: '#/components/schemas/TrackingEventType'
+        description:
+          type: string
+          description: Carrier's own wording for the scan.
+          examples:
+            - Arrived at UPS facility
+        location:
+          type: object
+          properties:
+            city:
+              type: string
+            region:
+              type: string
+            country:
+              type: string
+        occurred_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+          description: When Parcelio received the event; may lag `occurred_at`.
+    TrackingEventList:
+      allOf:
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/TrackingEvent'
+        - $ref: '#/components/schemas/Pagination'
+    TrackingEventCreate:
+      type: object
+      required:
+        - tracking_number
+        - carrier_id
+        - type
+        - occurred_at
+      properties:
+        tracking_number:
+          type: string
+        carrier_id:
+          type: string
+        type:
+          $ref: '#/components/schemas/TrackingEventType'
+        description:
+          type: string
+        location:
+          type: object
+          properties:
+            city:
+              type: string
+            region:
+              type: string
+            country:
+              type: string
+        occurred_at:
+          type: string
+          format: date-time
+    TrackingSummary:
+      type: object
+      required:
+        - tracking_number
+        - carrier_id
+        - status
+        - events
+      properties:
+        tracking_number:
+          type: string
+        carrier_id:
+          type: string
+        shipment_id:
+          type:
+            - string
+            - 'null'
+          description: Set when the tracking number belongs to a Parcelio shipment.
+        status:
+          $ref: '#/components/schemas/ShipmentStatus'
+        estimated_delivery:
+          type:
+            - string
+            - 'null'
+          format: date
+        events:
+          type: array
+          description: 'Most recent events, newest first, at most 20.'
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/TrackingEvent'
+    Carrier:
+      type: object
+      required:
+        - id
+        - name
+        - enabled
+        - countries
+      properties:
+        id:
+          type: string
+          examples:
+            - car_ups
+        name:
+          type: string
+          examples:
+            - UPS
+        enabled:
+          type: boolean
+          description: Whether this account has connected credentials for the carrier.
+        countries:
+          type: array
+          description: ISO 3166-1 alpha-2 codes the carrier can ship from.
+          items:
+            type: string
+            minLength: 2
+            maxLength: 2
+        tracking_url_template:
+          type:
+            - string
+            - 'null'
+          description: 'URL with `{tracking_number}` placeholder for the carrier''s own tracking page.'
+          examples:
+            - 'https://www.ups.com/track?tracknum={tracking_number}'
+    CarrierList:
+      allOf:
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Carrier'
+        - $ref: '#/components/schemas/Pagination'
+    CarrierService:
+      type: object
+      required:
+        - service_code
+        - carrier_id
+        - name
+        - transit_days
+      properties:
+        service_code:
+          type: string
+          examples:
+            - ups_ground
+        carrier_id:
+          type: string
+        name:
+          type: string
+          examples:
+            - UPS Ground
+        transit_days:
+          type: object
+          required:
+            - min
+            - max
+          properties:
+            min:
+              type: integer
+              minimum: 0
+            max:
+              type: integer
+              minimum: 0
+        international:
+          type: boolean
+        max_weight:
+          $ref: '#/components/schemas/Weight'
+    RateRequest:
+      type: object
+      required:
+        - ship_from
+        - ship_to
+        - packages
+      properties:
+        ship_from:
+          $ref: '#/components/schemas/Address'
+        ship_to:
+          $ref: '#/components/schemas/Address'
+        packages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/PackageCreate'
+        carrier_ids:
+          type: array
+          description: Restrict quotes to these carriers.
+          items:
+            type: string
+    Rate:
+      type: object
+      required:
+        - service_code
+        - carrier_id
+        - service_name
+        - total
+        - transit_days
+      properties:
+        service_code:
+          type: string
+        carrier_id:
+          type: string
+        service_name:
+          type: string
+        total:
+          $ref: '#/components/schemas/Money'
+        transit_days:
+          type: object
+          required:
+            - min
+            - max
+          properties:
+            min:
+              type: integer
+            max:
+              type: integer
+        estimated_delivery:
+          type:
+            - string
+            - 'null'
+          format: date
+        expires_at:
+          type: string
+          format: date-time
+          description: The quote is honoured until this instant.
+    RateList:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Rate'
+    PickupCreate:
+      type: object
+      required:
+        - carrier_id
+        - address
+        - window_start
+        - window_end
+        - shipment_ids
+      properties:
+        carrier_id:
+          type: string
+        address:
+          $ref: '#/components/schemas/Address'
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+        shipment_ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        instructions:
+          type: string
+          maxLength: 300
+          description: 'Shown to the driver, for example "Loading dock B, ring bell".'
+    Pickup:
+      allOf:
+        - $ref: '#/components/schemas/PickupCreate'
+        - type: object
+          required:
+            - id
+            - status
+            - created_at
+          properties:
+            id:
+              type: string
+              examples:
+                - pk_7Hq2mZp9Lc
+            status:
+              type: string
+              enum:
+                - requested
+                - confirmed
+                - completed
+                - cancelled
+            confirmation_number:
+              type:
+                - string
+                - 'null'
+              description: 'Carrier''s confirmation reference, set once `confirmed`.'
+            created_at:
+              type: string
+              format: date-time
+    WebhookEventType:
+      type: string
+      enum:
+        - shipment.status_changed
+        - shipment.delivered
+        - shipment.exception
+        - pickup.confirmed
+        - pickup.completed
+    WebhookSubscriptionCreate:
+      type: object
+      required:
+        - url
+        - events
+      properties:
+        url:
+          type: string
+          format: uri
+          description: HTTPS endpoint that receives POST deliveries.
+          examples:
+            - 'https://hooks.example.com/parcelio'
+        events:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+        description:
+          type: string
+          maxLength: 200
+        active:
+          type: boolean
+          default: true
+    WebhookSubscription:
+      allOf:
+        - $ref: '#/components/schemas/WebhookSubscriptionCreate'
+        - type: object
+          required:
+            - id
+            - created_at
+          properties:
+            id:
+              type: string
+              examples:
+                - whk_Bd72kPz4Qm
+            created_at:
+              type: string
+              format: date-time
+            health:
+              type: object
+              description: Delivery statistics for the last 24 hours.
+              properties:
+                deliveries:
+                  type: integer
+                  minimum: 0
+                failures:
+                  type: integer
+                  minimum: 0
+                last_success_at:
+                  type:
+                    - string
+                    - 'null'
+                  format: date-time
+    WebhookSubscriptionWithSecret:
+      allOf:
+        - $ref: '#/components/schemas/WebhookSubscription'
+        - type: object
+          required:
+            - secret
+          properties:
+            secret:
+              type: string
+              description: HMAC signing secret. Shown only in this response.
+              examples:
+                - whsec_3f9c1a7d8b2e4f6a9c0d1e2f3a4b5c6d
+    WebhookSubscriptionList:
+      allOf:
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/WebhookSubscription'
+        - $ref: '#/components/schemas/Pagination'
+    WebhookTestResult:
+      type: object
+      required:
+        - delivered
+        - status_code
+        - duration_ms
+      properties:
+        delivered:
+          type: boolean
+        status_code:
+          type:
+            - integer
+            - 'null'
+          description: 'HTTP status returned by your endpoint, or `null` if the connection failed.'
+        duration_ms:
+          type: integer
+          minimum: 0
+        error:
+          type:
+            - string
+            - 'null'
+    ShipmentStatusChangedEvent:
+      type: object
+      required:
+        - id
+        - type
+        - created_at
+        - data
+      properties:
+        id:
+          type: string
+          description: Event id. Stable across retries.
+          examples:
+            - evt_Qm31zXp8Lr
+        type:
+          type: string
+          const: shipment.status_changed
+        created_at:
+          type: string
+          format: date-time
+        data:
+          type: object
+          required:
+            - shipment_id
+            - previous_status
+            - status
+          properties:
+            shipment_id:
+              type: string
+            previous_status:
+              $ref: '#/components/schemas/ShipmentStatus'
+            status:
+              $ref: '#/components/schemas/ShipmentStatus'
+            tracking_number:
+              type:
+                - string
+                - 'null'
+            event:
+              $ref: '#/components/schemas/TrackingEvent'

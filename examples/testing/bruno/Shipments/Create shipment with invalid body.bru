@@ -1,0 +1,48 @@
+meta {
+  name: Create shipment with invalid body
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/shipments
+  body: json
+  auth: bearer
+}
+
+headers {
+  content-type: application/json
+}
+
+auth:bearer {
+  token: {{oauthToken}}
+}
+
+body:json {
+  {
+    "reference": "ORDER-BROKEN",
+    "packages": []
+  }
+}
+
+assert {
+  res.status: eq 422
+  res.headers['content-type']: contains application/problem+json
+  res.body.errors: isArray
+  res.body.errors[0].field: isString
+}
+
+tests {
+  test("validation problem lists the failing field", function () {
+    const body = res.getBody();
+    expect(body.errors[0]).to.include.all.keys("field", "message");
+  });
+}
+
+docs {
+  Negative test. The body is missing `ship_from`, `ship_to` and
+  `service_code` and has an empty `packages` array (minItems: 1). Prism
+  validates the request against `ShipmentCreate`, rejects it, and because
+  the operation declares a `422` response it returns that response's
+  `ValidationProblem` example instead of its own generic error.
+}

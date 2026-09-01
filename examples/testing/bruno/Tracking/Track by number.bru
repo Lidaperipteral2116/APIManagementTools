@@ -1,0 +1,36 @@
+meta {
+  name: Track by number
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/tracking/1Z999AA10123456784?carrier_id=car_ups
+  body: none
+  auth: inherit
+}
+
+params:query {
+  carrier_id: car_ups
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains application/json
+  res.body.tracking_number: isString
+  res.body.status: isString
+  res.body.events: isArray
+}
+
+tests {
+  test("events list is bounded and newest first per the spec", function () {
+    const events = res.getBody().events;
+    expect(events.length).to.be.at.most(20);
+    events.forEach((e) => expect(e).to.include.all.keys("id", "shipment_id", "type", "occurred_at"));
+  });
+}
+
+docs {
+  `getTrackingByNumber`. The tracking number is the spec example
+  (`1Z999AA10123456784`).
+}

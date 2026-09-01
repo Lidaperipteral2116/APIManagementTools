@@ -1,0 +1,30 @@
+# .speakeasy/workflow.yaml for a standalone TypeScript MCP server.
+#
+# This is the file `speakeasy quickstart --mcp` writes (captured from
+# speakeasy CLI 1.796.2 on 2026-09-01, run with
+# `-t mcp-typescript -s specs/demo-api.yaml -n ParcelioMCP -p parcelio-mcp`),
+# with two edits:
+#   - `inputs[0].location` points at the shared spec relative to this folder
+#   - `overlays` applies ./overlay.yaml (x-speakeasy-mcp annotations) and then
+#     ./overlay-bearer-auth.yaml (see that file for why it is needed)
+# The `registry.location` line is what quickstart writes when you are logged
+# in; the org/workspace segment is your own.
+#
+# In a real checkout this file lives at .speakeasy/workflow.yaml next to
+# gen.yaml. It is kept at the folder root here so it is visible in the repo.
+workflowVersion: 1.0.0
+speakeasyVersion: latest
+sources:
+  Parcelio Shipments API:
+    inputs:
+      - location: ../../../specs/demo-api.yaml
+    overlays:
+      - location: ./overlay.yaml
+      - location: ./overlay-bearer-auth.yaml
+    output: .speakeasy/out.openapi.yaml
+    registry:
+      location: registry.speakeasyapi.dev/<org>/<workspace>/parcelio-shipments-api
+targets:
+  parcelio-mcp:
+    target: mcp-typescript
+    source: Parcelio Shipments API

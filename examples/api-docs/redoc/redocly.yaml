@@ -1,0 +1,23 @@
+# Redocly CLI config for examples/api-docs/redoc.
+# Use it with:  --config examples/api-docs/redoc/redocly.yaml
+#
+# Lint rules mirror the repo-root redocly.yaml (the spec is deliberately
+# imperfect; see specs/README.md). The `openapi` block holds Redoc rendering
+# options. Option names verified against https://redocly.com/docs/redoc/config
+# and by running build-docs with --lint-config warn (unknown keys are reported).
+extends:
+  - recommended
+rules:
+  operation-summary: warn        # listPackages intentionally has no summary
+  no-server-example.com: off     # the production server is fictional by design
+
+openapi:
+  hideDownloadButtons: true      # no "Download" button for the spec in the header
+  sortRequiredPropsFirst: true   # required schema properties listed first
+  jsonSamplesExpandLevel: 3      # expand nested JSON samples three levels deep
+  theme:
+    colors:
+      primary:
+        main: '#1f4e79'
+    typography:
+      fontFamily: 'Inter, system-ui, sans-serif'

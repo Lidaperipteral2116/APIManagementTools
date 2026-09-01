@@ -1,0 +1,74 @@
+# Second overlay, applied after overlay.yaml. Hand-written; verified with
+# `speakeasy overlay validate` / `apply --strict` and by regenerating.
+#
+# Why it exists: the spec secures its 13 write operations with a
+# per-operation OAuth2 authorization-code requirement. Speakeasy's MCP
+# generator (CLI 1.796.2) generates SDK functions for those operations but
+# NO MCP tools for them, silently: 16 tools instead of 28. Tested variants:
+#   - per-operation OAuth2 (the spec as-is)            -> 16 tools
+#   - per-operation `http bearer` scheme instead        -> 16 tools
+#   - per-operation security removed entirely            -> 28 tools
+# So the rule is: an operation whose `security` differs from the document's
+# global `security` gets no MCP tool; only global security is wired into the
+# generated server (its `--api-key-auth` flag / PARCELIOMCP_* env vars).
+#
+# The fix here: delete the per-operation requirement and make the global
+# requirement "API key AND bearer token", so the server holds both
+# credentials and sends both headers on every call. Read operations ignore
+# the bearer, write operations ignore the key, and the Prism mock is
+# satisfied (it checks for `Authorization: Bearer` on the 13 write
+# operations and `X-API-Key` on the rest). The token is obtained out of
+# band; an MCP server holding a token cannot run a browser-based
+# authorization-code flow anyway.
+#
+# The spec and the mock are untouched. Speakeasy's docs (read 2026-09-02)
+# describe no per-operation OAuth2 mechanism for standalone servers: the
+# standalone MCP OAuth guide covers agent-to-server auth (env vars or a
+# Speakeasy OAuth proxy) and the SDK OAuth guide says authorization-code
+# flows need custom security schemes and hooks. See README Notes.
+overlay: 1.0.0
+info:
+  title: Replace per-operation OAuth2 with a globally held bearer token
+  version: 1.0.0
+actions:
+  - target: $.components.securitySchemes
+    update:
+      BearerAuth:
+        type: http
+        scheme: bearer
+        description: OAuth2 access token obtained out of band.
+  # Overlay `update` appends to arrays, so the global requirement is removed
+  # and re-added rather than merged.
+  - target: $.security
+    remove: true
+  - target: $
+    update:
+      security:
+        - ApiKeyAuth: []
+          BearerAuth: []
+  - target: $.paths['/shipments'].post.security
+    remove: true
+  - target: $.paths['/shipments/{shipmentId}'].patch.security
+    remove: true
+  - target: $.paths['/shipments/{shipmentId}'].delete.security
+    remove: true
+  - target: $.paths['/shipments/{shipmentId}/dispatch'].post.security
+    remove: true
+  - target: $.paths['/shipments/{shipmentId}/documents'].post.security
+    remove: true
+  - target: $.paths['/shipments/{shipmentId}/packages'].post.security
+    remove: true
+  - target: $.paths['/packages/{packageId}'].delete.security
+    remove: true
+  - target: $.paths['/tracking/events'].post.security
+    remove: true
+  - target: $.paths['/pickups'].post.security
+    remove: true
+  - target: $.paths['/pickups/{pickupId}'].delete.security
+    remove: true
+  - target: $.paths['/webhooks'].post.security
+    remove: true
+  - target: $.paths['/webhooks/{webhookId}'].delete.security
+    remove: true
+  - target: $.paths['/webhooks/{webhookId}/test'].post.security
+    remove: true

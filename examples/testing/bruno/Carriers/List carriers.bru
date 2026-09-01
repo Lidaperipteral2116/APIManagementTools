@@ -1,0 +1,36 @@
+meta {
+  name: List carriers
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/carriers?limit=5
+  body: none
+  auth: inherit
+}
+
+params:query {
+  limit: 5
+}
+
+assert {
+  res.status: eq 200
+  res.headers['content-type']: contains application/json
+  res.body.data: isArray
+  res.body.has_more: isBoolean
+  res.body.next_cursor: isDefined
+}
+
+tests {
+  test("first carrier has the fields the spec marks required", function () {
+    const carrier = res.getBody().data[0];
+    expect(carrier).to.include.all.keys("id", "name", "enabled", "countries");
+    expect(carrier.id).to.match(/^car_[a-z0-9_]{2,}$/);
+  });
+}
+
+docs {
+  `listCarriers`. Cursor-paginated; `limit` is capped at 100 by the spec
+  (Prism returns 422 for larger values).
+}

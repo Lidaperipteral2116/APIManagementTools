@@ -1,0 +1,135 @@
+# OpenAPI Overlay (https://spec.openapis.org/overlay/v1.0.0) applied on top of
+# specs/demo-api.yaml before Speakeasy generates the MCP server. The original
+# spec is left untouched; every fix lives here.
+#
+# What it does:
+#   1. Tags every GET operation with the `read` scope and every mutating
+#      operation with the `write` scope, so the server can be started with
+#      `--scope read` for a read-only tool set.
+#   2. Gives the operations with missing or one-line descriptions a real
+#      tool description and a stable tool name (the spec's deliberate defects).
+#   3. Disables tracking_event_ingest: it is a carrier-integration endpoint
+#      (scope tracking:write) that an agent should never call.
+#
+# Verified with `speakeasy overlay validate` and `speakeasy overlay apply --strict`
+# (see README, "Expected output").
+overlay: 1.0.0
+info:
+  title: Parcelio MCP tool annotations
+  version: 1.0.0
+actions:
+  # ---- 1. scopes ---------------------------------------------------------
+  - target: $.paths[*].get
+    update:
+      x-speakeasy-mcp:
+        scopes: [read]
+  - target: $.paths[*]['post','patch','delete']
+    update:
+      x-speakeasy-mcp:
+        scopes: [write]
+  # quoteRates and validateAddress are POSTs with no side effects. Overlay
+  # `update` appends to arrays rather than replacing them, so the `write`
+  # scope added above has to be removed before `read` is set.
+  - target: $.paths['/rates'].post['x-speakeasy-mcp'].scopes
+    remove: true
+  - target: $.paths['/rates'].post
+    update:
+      x-speakeasy-mcp:
+        scopes: [read]
+        readOnlyHint: true
+  - target: $.paths['/addresses/validate'].post['x-speakeasy-mcp'].scopes
+    remove: true
+  - target: $.paths['/addresses/validate'].post
+    update:
+      x-speakeasy-mcp:
+        scopes: [read]
+        readOnlyHint: true
+
+  # ---- 2. operations with no description ---------------------------------
+  - target: $.paths['/shipments/{shipmentId}/dispatch'].post
+    update:
+      x-speakeasy-mcp:
+        name: dispatch_shipment
+        description: >-
+          Purchase the carrier label and hand a draft shipment to the carrier.
+          Irreversible and charges the account balance; confirm with the user
+          before calling. Returns the shipment with tracking_number set.
+          Fails with 409 if the shipment is not in draft, 402 if the balance
+          is insufficient.
+        destructiveHint: true
+        idempotentHint: false
+  - target: $.paths['/shipments/{shipmentId}/packages'].get
+    update:
+      summary: List packages in a shipment
+      x-speakeasy-mcp:
+        name: list_packages
+        description: >-
+          List the packages that belong to one shipment, with weight,
+          dimensions and (after dispatch) each package's tracking number.
+          Cursor-paginated: pass next_cursor back as cursor until it is null.
+  - target: $.paths['/packages/{packageId}'].delete
+    update:
+      x-speakeasy-mcp:
+        name: remove_package
+        description: >-
+          Remove a package from a draft shipment. Not allowed once the
+          shipment is dispatched (409). Deleting the last package leaves an
+          empty shipment that cannot be dispatched.
+        destructiveHint: true
+  - target: $.paths['/pickups/{pickupId}'].delete
+    update:
+      x-speakeasy-mcp:
+        name: cancel_pickup
+        description: >-
+          Cancel a scheduled carrier pickup. Returns 409 if the driver has
+          already completed it. Does not cancel the shipments in the pickup.
+        destructiveHint: true
+  - target: $.paths['/webhooks/{webhookId}/test'].post
+    update:
+      x-speakeasy-mcp:
+        name: test_webhook_subscription
+        description: >-
+          Send a synthetic shipment.status_changed event to a webhook
+          subscription's URL and report whether the endpoint answered 2xx,
+          the status code and the round-trip time. Safe to repeat.
+        idempotentHint: true
+
+  # ---- 2b. operations with a one-line description ------------------------
+  - target: $.paths['/shipments/{shipmentId}'].patch
+    update:
+      x-speakeasy-mcp:
+        name: update_shipment
+        description: >-
+          Change reference, service_code, ship_to, label_format or metadata
+          on a shipment that is still in draft. Only the fields sent are
+          changed. Returns 409 once the shipment has been dispatched.
+        idempotentHint: true
+  - target: $.paths['/packages/{packageId}'].get
+    update:
+      x-speakeasy-mcp:
+        name: get_package
+        description: >-
+          Fetch one package by id (pkg_...): weight, dimensions, declared
+          value, contents and the tracking number assigned at dispatch.
+  - target: $.paths['/carriers/{carrierId}'].get
+    update:
+      x-speakeasy-mcp:
+        name: get_carrier
+        description: >-
+          Fetch one carrier by id (car_ups, car_fedex, ...): whether the
+          account has credentials for it, the countries it ships from and its
+          public tracking URL template.
+  - target: $.paths['/webhooks/{webhookId}'].get
+    update:
+      x-speakeasy-mcp:
+        name: get_webhook_subscription
+        description: >-
+          Fetch one webhook subscription: target URL, subscribed event types,
+          active flag and 24-hour delivery health. The signing secret is never
+          returned here.
+
+  # ---- 3. hide the carrier-integration endpoint --------------------------
+  - target: $.paths['/tracking/events'].post
+    update:
+      x-speakeasy-mcp:
+        disabled: true

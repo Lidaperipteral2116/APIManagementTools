@@ -1,0 +1,153 @@
+name: ci
+
+# Validates the shared spec, lints it with Spectral, and smoke-tests every
+# runnable example against a Prism mock. Hosted-tool walkthroughs (Elva,
+# Theneo, Stainless, Speakeasy, Postman UI) need accounts and are not run
+# here; their config files are checked for validity only.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  PRISM_VERSION: 5.16.0
+  SPEC: specs/demo-api.yaml
+
+jobs:
+  spec:
+    name: Validate and lint the spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Redocly lint (structural validity, must pass)
+        run: npx -y @redocly/cli@2.49.1 lint $SPEC
+      - name: Spectral lint with the repo ruleset (deliberate defects show as warnings)
+        run: npx -y @stoplight/spectral-cli@6.16.3 lint -r examples/spec-quality/spectral/.spectral.yaml -f github-actions $SPEC
+      - name: Spectral ruleset self-test (fixture must fail)
+        run: |
+          ! npx -y @stoplight/spectral-cli@6.16.3 lint -r examples/spec-quality/spectral/.spectral.yaml --fail-severity warn examples/spec-quality/spectral/fixtures/violations.yaml
+      - name: Agent-readiness score, before the overlay
+        run: |
+          npx -y @stoplight/spectral-cli@6.16.3 lint -q -f json -r examples/spec-quality/agent-readiness/agent-readiness.spectral.yaml $SPEC \
+            | node examples/spec-quality/agent-readiness/score.mjs --spec $SPEC
+      - name: Apply the description overlay and score the fixed copy
+        run: |
+          npx -y bump-cli@2.10.1 overlay $SPEC examples/spec-quality/agent-readiness/fixed-descriptions.yaml -o /tmp/demo-api.fixed.yaml
+          npx -y @redocly/cli@2.49.1 lint /tmp/demo-api.fixed.yaml
+          npx -y @stoplight/spectral-cli@6.16.3 lint -q -f json -r examples/spec-quality/agent-readiness/agent-readiness.spectral.yaml /tmp/demo-api.fixed.yaml \
+            | node examples/spec-quality/agent-readiness/score.mjs --spec /tmp/demo-api.fixed.yaml
+
+  docs:
+    name: Build Redoc docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Redoc build
+        run: |
+          npx -y @redocly/cli@2.49.1 lint $SPEC --config examples/api-docs/redoc/redocly.yaml
+          npx -y @redocly/cli@2.49.1 build-docs $SPEC --config examples/api-docs/redoc/redocly.yaml -o examples/api-docs/redoc/dist/index.html
+          grep -q "Send test event" examples/api-docs/redoc/dist/index.html
+      - name: Stoplight Elements page serves and its CDN assets resolve
+        run: |
+          npx -y serve@14.2.6 -l 3100 . > serve.log 2>&1 &
+          sleep 5
+          curl -sf http://localhost:3100/examples/api-docs/stoplight/elements/ | grep -q 'elements-api'
+          curl -sf -o /dev/null http://localhost:3100/specs/demo-api.yaml
+          curl -sfI https://unpkg.com/@stoplight/elements@9.0.25/web-components.min.js > /dev/null
+      - name: Theneo CLI installs and exposes the documented flags (no account needed)
+        run: npx -y @theneo/cli@0.20.0 project create --help | grep -q -- '--generate-description'
+
+  mcp-and-testing:
+    name: Smoke-test runnable examples against Prism
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Start Prism mock
+        run: |
+          npx -y @stoplight/prism-cli@$PRISM_VERSION mock -p 4010 $SPEC > prism.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf -H 'X-API-Key: ci' http://127.0.0.1:4010/carriers > /dev/null && break
+            sleep 1
+          done
+          curl -sf -H 'X-API-Key: ci' http://127.0.0.1:4010/carriers > /dev/null
+
+      - name: fastmcp
+        working-directory: examples/openapi-to-mcp/fastmcp
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -r requirements.txt
+          PARCELIO_API_KEY=demo .venv/bin/python smoke_test.py
+
+      - name: mcp-sdk-typescript
+        working-directory: examples/openapi-to-mcp/mcp-sdk-typescript
+        run: |
+          npm ci
+          npm run smoke
+
+      - name: openapi-mcp-generator
+        working-directory: examples/openapi-to-mcp/openapi-mcp-generator
+        run: |
+          npm ci
+          npm run build:generated
+          npm run smoke:probe
+          npm run apply-edits
+          (cd generated && npm run build)
+          npm run smoke
+
+      - name: bruno
+        working-directory: examples/testing/bruno
+        run: |
+          npx -y @usebruno/cli@4.1.0 run -r --env local \
+            --env-var apiKey=demo-api-key --env-var oauthToken=demo-oauth-token \
+            --reporter-json results.json
+
+      - name: schemathesis
+        working-directory: examples/testing/schemathesis
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -r requirements.txt
+          # "ci" mode: the documented passing configuration. "all" shows the
+          # Prism artefacts and spec defects; see the README before enabling it.
+          PATH="$PWD/.venv/bin:$PATH" ./run.sh ci
+          .venv/bin/python -m pytest test_api.py -q
+
+      - name: postman collection runs with newman (4xx are expected without a token; see README)
+        working-directory: examples/openapi-to-mcp/postman
+        run: |
+          node -e 'for (const f of ["parcelio.postman_collection.json","parcelio.postman_environment.json"]) JSON.parse(require("fs").readFileSync(f,"utf8"))'
+          npx -y newman@6.2.2 run parcelio.postman_collection.json -e parcelio.postman_environment.json
+          node add-oauth-token.js parcelio.postman_collection.json /tmp/with-token.json
+          npx -y newman@6.2.2 run /tmp/with-token.json -e parcelio.postman_environment.json
+
+      - name: speakeasy generated server builds and answers a read and a write tool
+        working-directory: examples/openapi-to-mcp/speakeasy
+        run: |
+          (cd generated && npm install && npm run build)
+          CALL_TOOL='carriers-list-carriers|{"request":{"limit":2}}' node smoke.mjs generated start --scope read --server-url http://127.0.0.1:4010 --api-key-auth x --bearer-auth y
+          CALL_TOOL='dispatch_shipment|{"request":{"shipmentId":"shp_9f3KqLm2Xa"}}' node smoke.mjs generated start --scope write --server-url http://127.0.0.1:4010 --api-key-auth x --bearer-auth y
+
+      - name: hosted-tool config files parse (stainless, speakeasy overlays)
+        run: |
+          pip install -q pyyaml==6.0.3
+          python3 -c "
+          import sys, yaml
+          for f in ['examples/openapi-to-mcp/stainless/stainless.yml','examples/openapi-to-mcp/speakeasy/workflow.yaml','examples/openapi-to-mcp/speakeasy/gen.yaml','examples/openapi-to-mcp/speakeasy/overlay.yaml','examples/openapi-to-mcp/speakeasy/overlay-bearer-auth.yaml','examples/spec-quality/agent-readiness/fixed-descriptions.yaml']:
+              yaml.safe_load(open(f)); print('ok', f)
+          "
+
+      - name: Prism log on failure
+        if: failure()
+        run: tail -n 100 prism.log

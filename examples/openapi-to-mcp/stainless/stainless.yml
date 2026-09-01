@@ -1,0 +1,171 @@
+# stainless.yml for the Parcelio Shipments API (specs/demo-api.yaml).
+#
+# HAND-WRITTEN. `stl init` generates a first draft of this file from the spec;
+# this one was written by hand against the config schema reference
+# (https://www.stainless.com/docs/reference/config/) and the MCP guide
+# (https://www.stainless.com/docs/mcp/) on 2026-09-01 and has NOT been run
+# through `stl preview`, because that needs a Stainless account and the
+# 29-operation spec is over the free plan's 25-endpoint limit. Every key was
+# checked against the config reference on 2026-09-02; comments cite it where
+# the mapping is not obvious.
+#
+# Method names are the SDK method names; the comment after each is the
+# operationId in the spec it maps to.
+
+organization:
+  name: parcelio
+  docs: https://parcelio.example.com/docs
+  contact: api@parcelio.example.com
+
+settings:
+  license: MIT
+
+environments:
+  production: https://api.parcelio.example.com/v1
+  mock: http://127.0.0.1:4010          # Prism mock, see README
+
+# Which auth options the generated client constructor accepts. The generated
+# MCP server reads the same env vars.
+client_settings:
+  idempotency:
+    header: Idempotency-Key
+  opts:
+    api_key:
+      type: string
+      auth:
+        security_scheme: ApiKeyAuth     # X-API-Key header, read operations
+      read_env: PARCELIO_API_KEY
+    access_token:
+      type: string
+      auth:
+        # The reference allows `auth: { security_scheme, role? }` with role in
+        # value|username|password|client_id|client_secret. The client guide
+        # shows bearer schemes bound with security_scheme alone and OAuth2 only
+        # for the clientCredentials flow (client_id/client_secret roles); a
+        # pre-obtained token for an authorizationCode flow is not shown on
+        # either page (read 2026-09-02). `stl lint` decides; see README Notes.
+        security_scheme: OAuth2
+      read_env: PARCELIO_ACCESS_TOKEN
+
+pagination:
+  - name: cursor_page
+    type: cursor
+    request:
+      cursor:
+        type: string
+      limit:
+        type: integer
+    response:
+      data:
+        type: array
+      next_cursor:
+        type: string
+        nullable: true
+
+targets:
+  typescript:
+    package_name: parcelio
+    production_repo: null               # set to org/parcelio-typescript to publish
+    publish:
+      npm: false
+    options:
+      mcp_server:
+        package_name: parcelio-mcp      # default would be <package_name>-mcp
+        enable_code_tool: true          # config reference: targets.typescript.options.mcp_server
+        enable_docs_tool: true          # same; needs the SDK docs search API exposed for the project
+
+resources:
+  shipments:
+    models:
+      shipment: '#/components/schemas/Shipment'
+      shipment_status: '#/components/schemas/ShipmentStatus'
+      shipment_list: '#/components/schemas/ShipmentList'
+    methods:
+      list:
+        endpoint: get /shipments                     # listShipments
+        paginated: cursor_page                       # reference: `true`, or a string naming the pagination scheme
+      create: post /shipments                        # createShipment
+      retrieve: get /shipments/{shipmentId}          # getShipment
+      update: patch /shipments/{shipmentId}          # updateShipment
+      cancel: delete /shipments/{shipmentId}         # cancelShipment
+      dispatch: post /shipments/{shipmentId}/dispatch  # dispatchShipment
+      label: get /shipments/{shipmentId}/label       # getShipmentLabel (binary; MCP code tool returns it as bytes)
+      list_events:
+        endpoint: get /shipments/{shipmentId}/events   # listTrackingEvents
+        paginated: cursor_page
+    subresources:
+      documents:
+        models:
+          document: '#/components/schemas/Document'
+        methods:
+          list:
+            endpoint: get /shipments/{shipmentId}/documents   # listShipmentDocuments
+            paginated: cursor_page
+          upload: post /shipments/{shipmentId}/documents      # uploadShipmentDocument (multipart)
+      packages:
+        methods:
+          list:
+            endpoint: get /shipments/{shipmentId}/packages    # listPackages (no summary/description in the spec)
+            paginated: cursor_page
+          add: post /shipments/{shipmentId}/packages          # addPackage
+
+  packages:
+    models:
+      package: '#/components/schemas/Package'
+    methods:
+      retrieve: get /packages/{packageId}            # getPackage
+      remove: delete /packages/{packageId}           # removePackage
+
+  tracking:
+    models:
+      tracking_summary: '#/components/schemas/TrackingSummary'
+      tracking_event: '#/components/schemas/TrackingEvent'
+    methods:
+      retrieve: get /tracking/{trackingNumber}       # getTrackingByNumber
+      ingest:
+        endpoint: post /tracking/events              # tracking_event_ingest (carrier integrations only)
+        mcp: false                                   # keep it out of the agent's reach
+
+  carriers:
+    models:
+      carrier: '#/components/schemas/Carrier'
+      carrier_service: '#/components/schemas/CarrierService'
+    methods:
+      list:
+        endpoint: get /carriers                      # listCarriers
+        paginated: cursor_page
+      retrieve: get /carriers/{carrierId}            # getCarrier
+      list_services: get /carriers/{carrierId}/services   # listCarrierServices
+
+  rates:
+    models:
+      rate: '#/components/schemas/Rate'
+    methods:
+      quote: post /rates                             # quoteRates
+
+  addresses:
+    models:
+      address: '#/components/schemas/Address'
+      address_validation: '#/components/schemas/AddressValidation'
+    methods:
+      validate: post /addresses/validate             # validateAddress
+
+  pickups:
+    models:
+      pickup: '#/components/schemas/Pickup'
+    methods:
+      schedule: post /pickups                        # schedulePickup
+      retrieve: get /pickups/{pickupId}              # getPickup
+      cancel: delete /pickups/{pickupId}             # cancelPickup
+
+  webhooks:
+    models:
+      webhook_subscription: '#/components/schemas/WebhookSubscription'
+    methods:
+      list:
+        endpoint: get /webhooks                      # listWebhookSubscriptions
+        paginated: cursor_page
+      create: post /webhooks                         # createWebhookSubscription
+      retrieve: get /webhooks/{webhookId}            # getWebhookSubscription
+      delete: delete /webhooks/{webhookId}           # deleteWebhookSubscription
+      test: post /webhooks/{webhookId}/test          # testWebhookSubscription

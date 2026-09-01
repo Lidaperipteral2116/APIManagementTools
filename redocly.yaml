@@ -1,0 +1,12 @@
+# Redocly CLI configuration for the shared demo spec.
+#
+# The spec is *deliberately* imperfect in its descriptions (see specs/README.md),
+# so style rules that would flag those defects are downgraded to warnings here.
+# Structural validity is still enforced: `redocly lint` exits non-zero on errors.
+extends:
+  - recommended
+rules:
+  # listPackages intentionally has no summary. The spec-quality examples detect it.
+  operation-summary: warn
+  # The production server is fictional by design.
+  no-server-example.com: off
